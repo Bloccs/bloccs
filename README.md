@@ -10,8 +10,7 @@ to a Broadway supervision tree on the BEAM.
 ## Status
 
 **v0.1 — pre-release.** The OSS core is under active development. Not yet on
-Hex. See the parent monorepo `Bloccs/bloccs_cell` for the full design context
-(research, ADRs, commercialization plan).
+Hex. APIs may change before the first release.
 
 ## What it is
 
