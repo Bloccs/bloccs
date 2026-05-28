@@ -25,6 +25,13 @@ defmodule Bloccs.Node do
 
   alias Bloccs.{Parser, Validator}
 
+  # `walk_effect_shell_for_undeclared/3` and `check_node_for_undeclared_effects/3`
+  # are reached via `@after_compile` callbacks on `use Bloccs.Node` users.
+  # Dialyzer can't follow that meta-level dispatch, so silence the
+  # "unused_fun" complaints.
+  @dialyzer {:no_unused,
+             walk_effect_shell_for_undeclared: 3, check_node_for_undeclared_effects: 3}
+
   defmacro __using__(opts) do
     manifest_path = Keyword.fetch!(opts, :manifest)
     caller_file = __CALLER__.file
@@ -74,7 +81,6 @@ defmodule Bloccs.Node do
       def __bloccs_manifest_path__, do: @bloccs_manifest_path
 
       @doc "Return the list of effect axes declared in `[effects]`."
-      @spec __bloccs_declared_effects__() :: [atom()]
       def __bloccs_declared_effects__, do: @bloccs_declared_effects
 
       @after_compile {Bloccs.Node, :__check_contract__}
@@ -122,7 +128,7 @@ defmodule Bloccs.Node do
        when mod == env.module do
     declared = Bloccs.Manifest.Effects.declared(manifest.effects)
 
-    ast = Module.get_definition(env.module, {fun, 2}, :all)
+    ast = Module.get_definition(env.module, {fun, 2})
 
     case ast do
       {:v1, _, _, [{_meta, _args, _guards, body}]} ->

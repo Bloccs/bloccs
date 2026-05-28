@@ -79,9 +79,20 @@ defmodule Bloccs.Effects.Denied.Stub do
 
   def new(reason), do: %__MODULE__{reason: reason}
 
+  @spec post(t(), term(), term()) :: no_return()
   def post(_stub, _, _), do: Bloccs.Effects.deny!(:http, "axis not declared")
+
+  @spec get(t(), term()) :: no_return()
   def get(_stub, _), do: Bloccs.Effects.deny!(:http, "axis not declared")
+
+  @spec insert(t(), term(), term()) :: no_return()
   def insert(_stub, _, _), do: Bloccs.Effects.deny!(:db, "axis not declared")
+
+  @spec now(t()) :: no_return()
   def now(_stub), do: Bloccs.Effects.deny!(:time, "axis not declared")
+
+  @spec int(t(), term()) :: no_return()
   def int(_stub, _), do: Bloccs.Effects.deny!(:random, "axis not declared")
+
+  @type t :: %__MODULE__{reason: atom()}
 end

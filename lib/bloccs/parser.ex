@@ -74,12 +74,29 @@ defmodule Bloccs.Parser do
   end
 
   defp decode(text, path) do
-    case Toml.decode(text) do
-      {:ok, map} ->
-        {:ok, map}
+    cond do
+      not is_binary(text) ->
+        {:error, [%Error{file: path, message: "manifest must be a binary"}]}
 
-      {:error, reason} ->
-        {:error, [%Error{file: path, message: "TOML parse error: #{inspect(reason)}"}]}
+      not String.valid?(text) ->
+        {:error, [%Error{file: path, message: "manifest is not valid UTF-8"}]}
+
+      true ->
+        try do
+          case Toml.decode(text) do
+            {:ok, map} ->
+              {:ok, map}
+
+            {:error, reason} ->
+              {:error, [%Error{file: path, message: "TOML parse error: #{inspect(reason)}"}]}
+          end
+        rescue
+          e ->
+            {:error, [%Error{file: path, message: "TOML decode error: #{Exception.message(e)}"}]}
+        catch
+          kind, reason ->
+            {:error, [%Error{file: path, message: "TOML decode #{kind}: #{inspect(reason)}"}]}
+        end
     end
   end
 
@@ -332,7 +349,7 @@ defmodule Bloccs.Parser do
   # ---------- network cast ----------
 
   defp cast_network(map, path) do
-    base_dir = if path, do: Path.dirname(path), else: File.cwd!()
+    base_dir = Path.dirname(path)
 
     meta = Map.get(map, "network", %{})
 
