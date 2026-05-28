@@ -17,6 +17,7 @@ defmodule Bloccs.Integration.PaymentsTest do
                 ])
 
   setup_all do
+    Bloccs.Schema.clear!()
     Payments.Schemas.register()
 
     {:ok, network} = Parser.parse_network(@network_path)
