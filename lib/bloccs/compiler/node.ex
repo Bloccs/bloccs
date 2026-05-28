@@ -60,6 +60,7 @@ defmodule Bloccs.Compiler.Node do
 
       @network_id #{inspect(String.to_atom(network.id))}
       @local_id   #{inspect(nn.local_id)}
+      @in_port    #{inspect(in_port)}
       @impl_module #{inspect(manifest_module(pure))}
       @pure_fun    #{inspect(pure.function)}
       @shell_fun   #{inspect(shell.function)}
@@ -88,8 +89,19 @@ defmodule Bloccs.Compiler.Node do
       @impl Broadway
       def handle_message(_, %Broadway.Message{data: data} = msg, _) do
         manifest = @impl_module.__bloccs_manifest__()
-        caps     = Bloccs.Effects.bind(manifest)
-        ctx      = Bloccs.Context.new(effects: caps, received_at: DateTime.utc_now())
+
+        case Bloccs.Pipeline.validate_inbound(manifest, @in_port, data) do
+          :ok ->
+            run_node(manifest, data, msg)
+
+          {:error, reason} ->
+            Broadway.Message.failed(msg, reason)
+        end
+      end
+
+      defp run_node(manifest, data, msg) do
+        caps = Bloccs.Effects.bind(manifest)
+        ctx  = Bloccs.Context.new(effects: caps, received_at: DateTime.utc_now())
 
         try do
           case apply(@impl_module, @pure_fun, [data, ctx]) do
