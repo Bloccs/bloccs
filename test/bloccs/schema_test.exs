@@ -5,6 +5,7 @@ defmodule Bloccs.SchemaTest do
 
   setup do
     Schema.clear!()
+    on_exit(fn -> Schema.clear!() end)
     :ok
   end
 
