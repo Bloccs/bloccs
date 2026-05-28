@@ -77,6 +77,25 @@ defmodule Bloccs.Integration.PaymentsTest do
     assert [_charges_row, _ledger_row] = Enum.sort_by(MockDB.inserts(), &elem(&1, 0))
   end
 
+  test "malformed payload at the intake port is rejected by runtime schema validation" do
+    # `HttpRequest@1` declares :method, :path, :body. Sending a string fails
+    # validation; sending a map missing :body fails too. Neither should make
+    # it past the ingest pipeline, so no downstream sink should fire.
+
+    push_to_intake("definitely not a map")
+
+    refute_receive {:bloccs_sink, :payments, :notify_ok, :delivered, _}, 200
+    refute_receive {:bloccs_sink, :payments, :notify_fail, :delivered, _}, 200
+    refute_receive {:bloccs_sink, :payments, :ledger, :committed, _}, 200
+
+    # Missing fields: body is required by HttpRequest@1
+    push_to_intake(%{method: "POST", path: "/charges"})
+
+    refute_receive {:bloccs_sink, :payments, :notify_ok, :delivered, _}, 200
+    refute_receive {:bloccs_sink, :payments, :notify_fail, :delivered, _}, 200
+    refute_receive {:bloccs_sink, :payments, :ledger, :committed, _}, 200
+  end
+
   test "failure path: stripe failure routes to notify_fail (and skips ledger)" do
     MockHTTP.stub("POST", "https://api.stripe.com/v1/charges", fn _req ->
       %{"id" => "ch_test_fail", "status" => "failed"}
