@@ -1,0 +1,18 @@
+[node]
+id      = "leaky"
+version = "0.0.1"
+kind    = "transform"
+
+[ports.in]
+in_a = { schema = "X@1" }
+
+[ports.out]
+out_a = { schema = "X@1" }
+
+# Only http is declared. The fixture impl module leaks db + random.
+[effects]
+http = { allow = ["api.example.com"], methods = ["GET"] }
+
+[contract]
+pure_core    = "Bloccs.Test.LeakyNode.transform/2"
+effect_shell = "Bloccs.Test.LeakyNode.execute/2"

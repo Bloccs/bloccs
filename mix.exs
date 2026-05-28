@@ -18,7 +18,7 @@ defmodule Bloccs.MixProject do
       package: package(),
       docs: docs(),
       dialyzer: [
-        plt_add_apps: [:mix, :ex_unit],
+        plt_add_apps: [:mix, :ex_unit, :ex_ast],
         flags: [:unmatched_returns, :error_handling, :underspecs]
       ],
       test_coverage: [tool: ExCoveralls]
@@ -45,7 +45,10 @@ defmodule Bloccs.MixProject do
       {:stream_data, "~> 1.1", only: [:dev, :test]},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:excoveralls, "~> 0.18", only: :test}
+      {:excoveralls, "~> 0.18", only: :test},
+      {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.7", only: [:dev, :test], runtime: false},
+      {:program_facts, "~> 0.2", only: :test, runtime: false}
     ]
   end
 
