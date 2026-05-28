@@ -1,0 +1,38 @@
+[network]
+id      = "payments"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+ingest      = { use = "../nodes/http_ingest.bloccs" }
+charge      = { use = "../nodes/charge_customer.bloccs" }
+notify_ok   = { use = "../nodes/notify_ok.bloccs" }
+notify_fail = { use = "../nodes/notify_fail.bloccs" }
+ledger      = { use = "../nodes/ledger.bloccs" }
+
+[[edges]]
+from = "ingest.charge_request"
+to   = "charge.charge_requested"
+
+[[edges]]
+from = "charge.charge_completed"
+to   = ["notify_ok.notice", "ledger.event"]
+
+[[edges]]
+from = "charge.charge_failed"
+to   = "notify_fail.notice"
+
+[expose]
+in  = { intake   = "ingest.http_request" }
+out = { sent     = "notify_ok.delivered",
+        rejected = "notify_fail.delivered",
+        recorded = "ledger.committed" }
+
+[supervision]
+strategy     = "rest_for_one"
+max_restarts = 5
+max_seconds  = 60
+
+[deploy]
+concurrency = { charge = 2, ledger = 1 }
+placement   = "default"

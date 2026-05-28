@@ -1,0 +1,27 @@
+[node]
+id      = "charge_customer"
+version = "1.2.0"
+kind    = "transform"
+
+[doc]
+intent = "Charge a customer one-time via Stripe and emit the outcome."
+owner  = "@payments"
+
+[ports.in]
+charge_requested = { schema = "ChargeRequest@1", buffer = 100 }
+
+[ports.out]
+charge_completed = { schema = "ChargeCompleted@1" }
+charge_failed    = { schema = "ChargeFailed@1" }
+
+[effects]
+http = { allow = ["api.stripe.com"], methods = ["POST"] }
+db   = { allow = ["charges:insert"] }
+time = "wall_clock"
+
+[contract]
+pure_core    = "Payments.Nodes.ChargeCustomer.transform/2"
+effect_shell = "Payments.Nodes.ChargeCustomer.execute/2"
+retry        = { strategy = "exponential", max = 3, on = ["network", "stripe_5xx"] }
+timeout_ms   = 5000
+idempotency  = { key = "fields:customer_id,request_id" }

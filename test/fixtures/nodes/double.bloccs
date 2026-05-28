@@ -1,0 +1,16 @@
+[node]
+id = "double"
+version = "0.1.0"
+kind = "transform"
+
+[ports.in]
+in_n = { schema = "Num@1" }
+
+[ports.out]
+out_n = { schema = "Num@1" }
+
+[effects]
+
+[contract]
+pure_core = "Bloccs.Test.DoubleNode.transform/2"
+effect_shell = "Bloccs.Test.DoubleNode.execute/2"

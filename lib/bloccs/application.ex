@@ -5,7 +5,10 @@ defmodule Bloccs.Application do
 
   @impl true
   def start(_type, _args) do
-    children = []
+    children = [
+      {Registry, keys: :unique, name: Bloccs.Registry}
+    ]
+
     Supervisor.start_link(children, strategy: :one_for_one, name: Bloccs.Supervisor)
   end
 end
