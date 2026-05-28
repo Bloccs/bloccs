@@ -1,0 +1,20 @@
+[node]
+id      = "notify_fail"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Send a 'charge failed' notification email."
+
+[ports.in]
+notice = { schema = "ChargeFailed@1" }
+
+[ports.out]
+delivered = { schema = "EmailDelivered@1" }
+
+[effects]
+http = { allow = ["api.postmarkapp.com"], methods = ["POST"] }
+
+[contract]
+pure_core    = "Payments.Nodes.NotifyFail.transform/2"
+effect_shell = "Payments.Nodes.NotifyFail.execute/2"
