@@ -25,6 +25,8 @@ defmodule Bloccs.Node do
 
   alias Bloccs.{Parser, Validator}
 
+  @known_effect_axes [:http, :db, :time, :random]
+
   # `walk_effect_shell_for_undeclared/3` and `check_node_for_undeclared_effects/3`
   # are reached via `@after_compile` callbacks on `use Bloccs.Node` users.
   # Dialyzer can't follow that meta-level dispatch, so silence the
@@ -122,17 +124,16 @@ defmodule Bloccs.Node do
 
   defp walk_effect_shell_for_undeclared(
          env,
-         %{module: mod, function: fun, arity: _arity},
+         %{module: mod, function: fun, arity: arity},
          manifest
        )
        when mod == env.module do
     declared = Bloccs.Manifest.Effects.declared(manifest.effects)
 
-    ast = Module.get_definition(env.module, {fun, 2})
-
-    case ast do
-      {:v1, _, _, [{_meta, _args, _guards, body}]} ->
-        check_node_for_undeclared_effects(body, declared, env)
+    case Module.get_definition(env.module, {fun, arity}) do
+      {:v1, _kind, _meta, clauses} when is_list(clauses) ->
+        bodies = Enum.map(clauses, fn {_meta, _args, _guards, body} -> body end)
+        check_node_for_undeclared_effects(bodies, declared, env)
 
       _ ->
         :ok
@@ -143,28 +144,35 @@ defmodule Bloccs.Node do
 
   defp walk_effect_shell_for_undeclared(_env, _shell, _manifest), do: :ok
 
-  defp check_node_for_undeclared_effects(ast, declared, env) do
-    {_, used} =
-      Macro.prewalk(ast, MapSet.new(), fn node, acc ->
-        case node do
-          {{:., _, [{{:., _, [{:ctx, _, _}, :effects]}, _, _}, axis]}, _, _}
-          when is_atom(axis) ->
-            {node, MapSet.put(acc, axis)}
+  # Uses ExAST.Patcher.find_all to detect direct `ctx.effects.<axis>` access in
+  # the effect-shell function body. For each known axis that ISN'T declared in
+  # the manifest's `[effects]`, search every clause body; emit IO.warn if a hit
+  # is found.
+  #
+  # Limitations (v0.1, by design):
+  #   - Syntactic only — aliasing (`effects = ctx.effects`) is not tracked.
+  #     Reach integration (v0.2+) closes this gap with transitive call-graph
+  #     analysis. The runtime capability struct backstops the warning either
+  #     way: undeclared calls raise `Bloccs.Effects.Denied`.
+  #   - Assumes the context parameter is named `ctx`. Bloccs convention.
+  defp check_node_for_undeclared_effects(bodies, declared, env) when is_list(bodies) do
+    declared_set = MapSet.new(declared)
+    candidates = Enum.reject(@known_effect_axes, &MapSet.member?(declared_set, &1))
 
-          _ ->
-            {node, acc}
-        end
-      end)
-
-    undeclared = MapSet.difference(used, MapSet.new(declared))
-
-    for axis <- undeclared do
+    candidates
+    |> Enum.filter(&effect_axis_referenced?(bodies, &1))
+    |> Enum.each(fn axis ->
       IO.warn(
         "bloccs: effect #{inspect(axis)} used in effect_shell but not declared in [effects]. " <>
           "Declared: #{inspect(declared)}.",
         env
       )
-    end
+    end)
+  end
+
+  defp effect_axis_referenced?(bodies, axis) do
+    pattern = "ctx.effects.#{axis}"
+    Enum.any?(bodies, fn body -> ExAST.Patcher.find_all(body, pattern) != [] end)
   end
 
   defp format_issues(issues) do
