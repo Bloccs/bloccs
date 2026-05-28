@@ -44,6 +44,7 @@ defmodule Bloccs.Node do
       {:ok, manifest} ->
         case Validator.validate_node(manifest) do
           :ok ->
+            emit_unwired_field_warnings(manifest, __CALLER__)
             emit_node_module(manifest, resolved)
 
           {:error, issues} ->
@@ -173,6 +174,23 @@ defmodule Bloccs.Node do
   defp effect_axis_referenced?(bodies, axis) do
     pattern = "ctx.effects.#{axis}"
     Enum.any?(bodies, fn body -> ExAST.Patcher.find_all(body, pattern) != [] end)
+  end
+
+  defp emit_unwired_field_warnings(manifest, env) do
+    case Validator.warnings(manifest) do
+      [] ->
+        :ok
+
+      warnings ->
+        summary =
+          "bloccs node `#{manifest.id}` declares fields not yet wired into the v0.1 runtime:\n" <>
+            (warnings
+             |> Enum.map(fn %Bloccs.Validator.Issue{scope: s} -> "  - #{s}" end)
+             |> Enum.join("\n")) <>
+            "\nDeclared values are parsed but ignored. See docs/v0.1-audit.md."
+
+        IO.warn(summary, env)
+    end
   end
 
   defp format_issues(issues) do

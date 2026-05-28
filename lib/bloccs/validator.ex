@@ -90,6 +90,114 @@ defmodule Bloccs.Validator do
   defp prepend_scope(%Issue{scope: nil} = i, prefix), do: %{i | scope: prefix}
   defp prepend_scope(%Issue{scope: s} = i, prefix), do: %{i | scope: "#{prefix} → #{s}"}
 
+  # ---------- warnings (parsed-but-not-wired manifest fields) ----------
+
+  @doc """
+  Return advisory warnings about manifest fields that are accepted by the
+  parser but not yet honoured at runtime by the v0.1 compiler.
+
+  Returns a flat list of `%Issue{level: :warning}`. Callers decide how to
+  surface them — `Bloccs.Node` `__using__/1` emits `IO.warn` per warning;
+  the CLI tasks print a yellow block.
+
+  v0.1 unwired fields (see docs/v0.1-audit.md):
+
+  - `[contract].retry`, `[contract].timeout_ms`, `[contract].idempotency`
+  - `[ports.in].<port>.buffer`
+  - `[observability].metrics`, `[observability].traces`
+  - `[expose]` (network-level; subgraph composition is v0.2)
+  """
+  @spec warnings(Node.t() | Network.t()) :: [Issue.t()]
+  def warnings(%Node{} = node), do: node_warnings(node)
+
+  def warnings(%Network{} = network) do
+    node_warnings =
+      Enum.flat_map(network.nodes, fn {local_id, %NetworkNode{manifest: m}} ->
+        Enum.map(node_warnings(m), &prepend_scope(&1, "nodes.#{local_id}"))
+      end)
+
+    node_warnings ++ network_warnings(network)
+  end
+
+  defp node_warnings(%Node{} = node) do
+    contract_warnings(node) ++ port_buffer_warnings(node) ++ observability_warnings(node)
+  end
+
+  defp contract_warnings(%Node{contract: c, path: path}) do
+    [
+      {c.retry, "[contract].retry", "retry policy"},
+      {c.timeout_ms, "[contract].timeout_ms", "per-message timeout"},
+      {c.idempotency, "[contract].idempotency", "idempotency key"}
+    ]
+    |> Enum.filter(fn {v, _, _} -> v != nil end)
+    |> Enum.map(fn {_, scope, label} -> unwired_issue(path, scope, label) end)
+  end
+
+  defp port_buffer_warnings(%Node{ports_in: ports, path: path}) do
+    for {name, %Port{buffer: buffer}} <- ports, buffer != nil do
+      unwired_issue(
+        path,
+        "[ports.in].#{name}.buffer",
+        "producer buffer size (v0.1 queue is unbounded)"
+      )
+    end
+  end
+
+  defp observability_warnings(%Node{observability: obs, path: path}) when is_map(obs) do
+    metrics = Map.get(obs, :metrics, [])
+    traces = Map.get(obs, :traces, "off")
+
+    warnings = []
+
+    warnings =
+      if is_list(metrics) and metrics != [],
+        do: [
+          unwired_issue(path, "[observability].metrics", "telemetry metric exposure") | warnings
+        ],
+        else: warnings
+
+    warnings =
+      if is_binary(traces) and traces not in ["off", ""],
+        do: [unwired_issue(path, "[observability].traces", "telemetry trace exposure") | warnings],
+        else: warnings
+
+    warnings
+  end
+
+  defp observability_warnings(_), do: []
+
+  defp network_warnings(%Network{expose: e, path: path}) do
+    count = map_size(e.in) + map_size(e.out)
+
+    if count > 0 do
+      [
+        %Issue{
+          level: :warning,
+          file: path,
+          scope: "[expose]",
+          message:
+            "declares #{map_size(e.in)} in / #{map_size(e.out)} out exposed ports, " <>
+              "but subgraph composition (network-as-node) is deferred to v0.2. " <>
+              "v0.1 stores these values without consuming them. " <>
+              "See docs/v0.1-audit.md."
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp unwired_issue(path, scope, label) do
+    %Issue{
+      level: :warning,
+      file: path,
+      scope: scope,
+      message:
+        "#{label} is parsed but not yet wired into the v0.1 runtime — " <>
+          "declared values will be silently ignored. See docs/v0.1-audit.md."
+    }
+  end
+
   # ---------- node checks ----------
 
   defp check_effects(%Node{effects: %Effects{} = e, path: path}) do

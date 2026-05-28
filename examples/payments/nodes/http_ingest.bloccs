@@ -8,7 +8,7 @@ intent = "Accept an HTTP charge request and forward it as a typed ChargeRequest.
 owner  = "@payments"
 
 [ports.in]
-http_request = { schema = "HttpRequest@1", buffer = 100 }
+http_request = { schema = "HttpRequest@1" }
 
 [ports.out]
 charge_request = { schema = "ChargeRequest@1" }

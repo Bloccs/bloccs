@@ -1,0 +1,28 @@
+[node]
+id      = "unwired_demo"
+version = "0.0.1"
+kind    = "transform"
+
+# Every manifest field below is parsed by Bloccs.Parser but NOT wired
+# into the v0.1 compiler. `Bloccs.Validator.warnings/1` should produce
+# one warning per declared field, surfaced via `IO.warn` from the
+# Bloccs.Node macro.
+
+[ports.in]
+in_a = { schema = "X@1", buffer = 50 }
+
+[ports.out]
+out_a = { schema = "X@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Test.UnwiredNode.transform/2"
+effect_shell = "Bloccs.Test.UnwiredNode.execute/2"
+retry        = { strategy = "linear", max = 2, on = ["network"] }
+timeout_ms   = 1000
+idempotency  = { key = "fields:in_a" }
+
+[observability]
+metrics = ["duration_ms"]
+traces  = "auto"
