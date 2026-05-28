@@ -55,7 +55,7 @@ defmodule Bloccs.Manifest.Node do
 end
 
 defmodule Bloccs.Manifest.Doc do
-  @moduledoc false
+  @moduledoc "Human-facing documentation block from `[doc]`: intent + owner."
 
   @type t :: %__MODULE__{
           intent: String.t() | nil,

@@ -48,6 +48,8 @@ defmodule Mix.Tasks.Bloccs.Compile do
     end
   end
 
+  @spec handle_errors(Path.t(), [Bloccs.Parser.Error.t() | Bloccs.Validator.Issue.t()]) ::
+          no_return()
   defp handle_errors(path, errs) do
     Mix.shell().error("✗ #{path}")
 

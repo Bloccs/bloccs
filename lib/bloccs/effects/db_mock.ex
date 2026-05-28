@@ -11,7 +11,7 @@ defmodule Bloccs.Effects.DB.Mock do
   def new(%{allow: allow}), do: %__MODULE__{allow: allow}
 
   @spec insert(%__MODULE__{}, atom() | String.t(), keyword() | map()) ::
-          {:ok, map()} | {:error, term()}
+          {:ok, map()} | no_return()
   def insert(%__MODULE__{allow: allow}, table, attrs) do
     scope = "#{table}:insert"
 

@@ -61,16 +61,20 @@ defmodule Mix.Tasks.Bloccs.Run do
     if map_size(expose.in) > 0 do
       Mix.shell().info("  exposed inputs:")
 
-      for {name, {node, port}} <- expose.in,
-          do: Mix.shell().info("    #{name}  → #{node}.#{port}")
+      Enum.each(expose.in, fn {name, {node, port}} ->
+        Mix.shell().info("    #{name}  → #{node}.#{port}")
+      end)
     end
 
     if map_size(expose.out) > 0 do
       Mix.shell().info("  exposed outputs:")
 
-      for {name, {node, port}} <- expose.out,
-          do: Mix.shell().info("    #{name}  ← #{node}.#{port}")
+      Enum.each(expose.out, fn {name, {node, port}} ->
+        Mix.shell().info("    #{name}  ← #{node}.#{port}")
+      end)
     end
+
+    :ok
   end
 
   defp feed_message(network, opts, json) do

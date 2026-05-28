@@ -35,7 +35,7 @@ defmodule Payments.Nodes.ChargeCustomer do
     end
   end
 
-  @spec execute(map(), Bloccs.Context.t()) :: {:emit, atom(), map()} | {:error, term()}
+  @spec execute(map(), Bloccs.Context.t()) :: {:emit, atom(), map()}
   def execute(intent, ctx) do
     case MockHTTP.post(ctx.effects.http, "https://api.stripe.com/v1/charges", intent) do
       {:ok, %{"id" => stripe_id, "status" => "succeeded"}} ->

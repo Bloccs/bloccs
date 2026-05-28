@@ -11,6 +11,7 @@ defmodule Bloccs.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
+      preferred_cli_env: [check: :test],
       deps: deps(),
       aliases: aliases(),
       description: description(),
@@ -42,7 +43,7 @@ defmodule Bloccs.MixProject do
       {:gen_stage, "~> 1.2"},
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.1", only: [:dev, :test]},
-      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:excoveralls, "~> 0.18", only: :test}
     ]

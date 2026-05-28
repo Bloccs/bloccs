@@ -6,7 +6,7 @@ defmodule Payments.Nodes.HttpIngest do
 
   use Bloccs.Node, manifest: "../../nodes/http_ingest.bloccs"
 
-  @spec transform(map(), Bloccs.Context.t()) :: {:ok, map()} | {:error, term()}
+  @spec transform(map(), Bloccs.Context.t()) :: {:ok, map()}
   def transform(%{} = req, _ctx) do
     body = Map.get(req, :body, %{})
 
