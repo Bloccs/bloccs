@@ -41,6 +41,7 @@ defmodule Mix.Tasks.Bloccs.Validate do
         case Validator.validate_node(manifest) do
           :ok ->
             Mix.shell().info([:green, "✓ ", :reset, path, "  ", :bright, "OK (node)"])
+            print_warnings(Validator.warnings(manifest))
 
           {:error, issues} ->
             Mix.shell().error("✗ #{path}\n" <> format_issues(issues))
@@ -71,6 +72,8 @@ defmodule Mix.Tasks.Bloccs.Validate do
               "  #{map_size(network.nodes)} nodes · #{length(network.edges)} edges"
             ])
 
+            print_warnings(Validator.warnings(network))
+
           {:error, issues} ->
             Mix.shell().error("✗ #{path}\n" <> format_issues(issues))
             exit({:shutdown, 1})
@@ -79,6 +82,20 @@ defmodule Mix.Tasks.Bloccs.Validate do
       {:error, errs} ->
         Mix.shell().error("✗ #{path}\n" <> format_parser_errors(errs))
         exit({:shutdown, 1})
+    end
+  end
+
+  defp print_warnings([]), do: :ok
+
+  defp print_warnings(warnings) do
+    Mix.shell().info([
+      :yellow,
+      "  ⚠ #{length(warnings)} parsed-but-unwired field#{if length(warnings) > 1, do: "s", else: ""}:",
+      :reset
+    ])
+
+    for %Bloccs.Validator.Issue{scope: s, message: m} <- warnings do
+      Mix.shell().info([:yellow, "    - #{s}: #{m}", :reset])
     end
   end
 
