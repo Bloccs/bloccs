@@ -14,7 +14,7 @@ defmodule Bloccs.Runtime do
       effect_shell(mid, ctx) :: {:emit, port, payload} | {:error, reason}
   """
 
-  alias Bloccs.{Context, Effects, Manifest.Node, Pipeline, Producer, Retry, Router}
+  alias Bloccs.{Context, Effects, Idempotency, Manifest.Node, Pipeline, Producer, Retry, Router}
   alias Broadway.Message
 
   defmodule Config do
@@ -44,19 +44,27 @@ defmodule Bloccs.Runtime do
   """
   @spec process(Message.t(), Config.t()) :: Message.t()
   def process(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
-    case Pipeline.validate_inbound(manifest, in_port, msg.data) do
-      :ok -> run(msg, cfg)
-      {:error, reason} -> fail_or_retry(msg, reason, cfg)
+    dedup = dedup_target(cfg, msg.data)
+
+    if duplicate?(dedup, msg) do
+      # Already-completed key, fresh delivery: ack and skip without re-running.
+      msg
+    else
+      case Pipeline.validate_inbound(manifest, in_port, msg.data) do
+        :ok -> run(msg, cfg, dedup)
+        {:error, reason} -> fail_or_retry(msg, reason, cfg)
+      end
     end
   end
 
-  defp run(%Message{data: data} = msg, %Config{manifest: manifest} = cfg) do
+  defp run(%Message{data: data} = msg, %Config{manifest: manifest} = cfg, dedup) do
     caps = Effects.bind(manifest)
     ctx = Context.new(effects: caps, received_at: DateTime.utc_now())
 
     case execute(manifest, data, ctx, manifest.contract.timeout_ms) do
       {:emit, port, payload} ->
         Router.dispatch(cfg.network_id, cfg.local_id, port, payload)
+        mark_done(dedup)
         msg
 
       {:error, reason} ->
@@ -84,6 +92,39 @@ defmodule Bloccs.Runtime do
 
   defp attempt(%Message{metadata: meta}) when is_map(meta), do: Map.get(meta, :bloccs_attempt, 0)
   defp attempt(_), do: 0
+
+  # Resolve the `{scope, key}` to dedup on, or nil when the node declares no
+  # idempotency key (or the key field is absent from the payload).
+  defp dedup_target(%Config{manifest: m, network_id: n, local_id: l}, data) do
+    case idempotency_key(m.contract.idempotency, data) do
+      {:ok, value} -> {{n, l}, value}
+      :none -> nil
+    end
+  end
+
+  defp idempotency_key(%{key: field}, data) when is_map(data), do: fetch_field(data, field)
+  defp idempotency_key(_idem, _data), do: :none
+
+  # Payloads may carry string or atom keys; try the declared field both ways.
+  defp fetch_field(data, field) do
+    cond do
+      Map.has_key?(data, field) -> {:ok, Map.fetch!(data, field)}
+      (atom = existing_atom(field)) && Map.has_key?(data, atom) -> {:ok, Map.fetch!(data, atom)}
+      true -> :none
+    end
+  end
+
+  defp existing_atom(field) do
+    String.to_existing_atom(field)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp duplicate?(nil, _msg), do: false
+  defp duplicate?({scope, key}, msg), do: attempt(msg) == 0 and Idempotency.seen?(scope, key)
+
+  defp mark_done(nil), do: :ok
+  defp mark_done({scope, key}), do: Idempotency.mark(scope, key)
 
   # No declared timeout: run inline, no Task overhead.
   defp execute(manifest, data, ctx, nil), do: run_node(manifest, data, ctx)

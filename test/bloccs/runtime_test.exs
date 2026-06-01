@@ -111,6 +111,26 @@ defmodule Bloccs.RuntimeTest do
   retry = { strategy = "constant", max = 2, on = [], base_ms = 5 }
   """
 
+  @idempotent_manifest ~S"""
+  [node]
+  id = "runtime_idem_demo"
+  version = "0.1.0"
+  kind = "transform"
+
+  [ports.in]
+  inbound = { schema = "RtReq@1" }
+
+  [ports.out]
+  out = { schema = "RtResp@1" }
+
+  [effects]
+
+  [contract]
+  pure_core = "Bloccs.RuntimeTest.Impl.transform/2"
+  effect_shell = "Bloccs.RuntimeTest.Impl.execute/2"
+  idempotency = { key = "request_id" }
+  """
+
   # A minimal GenStage consumer that forwards every delivered message to a
   # test pid — lets us observe what a producer emits without poking internals.
   defmodule Collector do
@@ -132,6 +152,8 @@ defmodule Bloccs.RuntimeTest do
 
   defp msg(data, meta \\ %{}),
     do: %Message{data: data, metadata: meta, acknowledger: {Bloccs.Producer.Acknowledger, :x, :x}}
+
+  defp refute_failed(%Message{} = msg), do: not match?(%Message{status: {:failed, _}}, msg)
 
   describe "process/2 happy path" do
     test "runs pure_core → effect_shell → dispatch and returns an un-failed message", %{cfg: cfg} do
@@ -231,6 +253,44 @@ defmodule Bloccs.RuntimeTest do
 
       assert %Message{status: {:failed, {:schema_mismatch, "RtReq@1", _}}} = result
       refute_receive {:consumed, _}, 100
+    end
+  end
+
+  describe "process/2 idempotency" do
+    setup %{cfg: cfg} do
+      Bloccs.Idempotency.reset()
+      on_exit(&Bloccs.Idempotency.reset/0)
+      {:ok, manifest} = Parser.parse_node_string(@idempotent_manifest)
+      %{icfg: %{cfg | manifest: manifest}}
+    end
+
+    test "first delivery of a key runs and emits; a later duplicate is skipped", %{icfg: icfg} do
+      assert refute_failed(Runtime.process(msg(%{"request_id" => "r1", "n" => 1}), icfg))
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"request_id" => "r1"}}
+
+      # Same key, fresh delivery → acked but NOT re-run (no second emit).
+      assert refute_failed(Runtime.process(msg(%{"request_id" => "r1", "n" => 2}), icfg))
+      refute_receive {:bloccs_sink, _, _, _, _}, 100
+    end
+
+    test "distinct keys both run", %{icfg: icfg} do
+      Runtime.process(msg(%{"request_id" => "r1"}), icfg)
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"request_id" => "r1"}}
+
+      Runtime.process(msg(%{"request_id" => "r2"}), icfg)
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"request_id" => "r2"}}
+    end
+
+    test "a failed first delivery does not mark the key (so it can be reprocessed)", %{icfg: icfg} do
+      # `bad` makes pure_core fail; key must NOT be marked.
+      assert %Message{status: {:failed, _}} =
+               Runtime.process(msg(%{"request_id" => "r1", "bad" => true}), icfg)
+
+      refute Bloccs.Idempotency.seen?({:rt_net, :demo}, "r1")
+
+      # A clean redelivery of the same key now succeeds.
+      assert refute_failed(Runtime.process(msg(%{"request_id" => "r1"}), icfg))
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"request_id" => "r1"}}
     end
   end
 
