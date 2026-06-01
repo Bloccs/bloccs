@@ -35,7 +35,6 @@ defmodule Bloccs.Compiler.Node do
     %Node{} = manifest = nn.manifest
 
     pure = manifest.contract.pure_core
-    shell = manifest.contract.effect_shell
 
     pipeline_module = module_name(network, nn)
     pipeline_name = Bloccs.Router.pipeline_name(String.to_atom(network.id), nn.local_id)
@@ -62,8 +61,6 @@ defmodule Bloccs.Compiler.Node do
       @local_id   #{inspect(nn.local_id)}
       @in_port    #{inspect(in_port)}
       @impl_module #{inspect(manifest_module(pure))}
-      @pure_fun    #{inspect(pure.function)}
-      @shell_fun   #{inspect(shell.function)}
 
       def start_link(opts \\\\ []) do
         Broadway.start_link(__MODULE__,
@@ -87,40 +84,13 @@ defmodule Bloccs.Compiler.Node do
       end
 
       @impl Broadway
-      def handle_message(_, %Broadway.Message{data: data} = msg, _) do
-        manifest = @impl_module.__bloccs_manifest__()
-
-        case Bloccs.Pipeline.validate_inbound(manifest, @in_port, data) do
-          :ok ->
-            run_node(manifest, data, msg)
-
-          {:error, reason} ->
-            Broadway.Message.failed(msg, reason)
-        end
-      end
-
-      defp run_node(manifest, data, msg) do
-        caps = Bloccs.Effects.bind(manifest)
-        ctx  = Bloccs.Context.new(effects: caps, received_at: DateTime.utc_now())
-
-        try do
-          case apply(@impl_module, @pure_fun, [data, ctx]) do
-            {:ok, intermediate} ->
-              case apply(@impl_module, @shell_fun, [intermediate, ctx]) do
-                {:emit, port, payload} ->
-                  Bloccs.Router.dispatch(@network_id, @local_id, port, payload)
-                  msg
-
-                {:error, reason} ->
-                  Broadway.Message.failed(msg, reason)
-              end
-
-            {:error, reason} ->
-              Broadway.Message.failed(msg, reason)
-          end
-        rescue
-          e -> Broadway.Message.failed(msg, e)
-        end
+      def handle_message(_, %Broadway.Message{} = msg, _) do
+        Bloccs.Runtime.process(msg, %Bloccs.Runtime.Config{
+          manifest: @impl_module.__bloccs_manifest__(),
+          network_id: @network_id,
+          local_id: @local_id,
+          in_port: @in_port
+        })
       end
     end
     """
