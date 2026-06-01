@@ -22,9 +22,12 @@ time = "wall_clock"
 [contract]
 pure_core    = "Payments.Nodes.ChargeCustomer.transform/2"
 effect_shell = "Payments.Nodes.ChargeCustomer.execute/2"
+# Charging is non-idempotent at Stripe, so dedup repeat deliveries of the same
+# request_id; bound each attempt; retry only transient timeouts with backoff.
+timeout_ms   = 5000
+idempotency  = { key = "request_id" }
+retry        = { strategy = "exponential", max = 3, on = ["timeout"], base_ms = 100 }
 
-# Note: retry / timeout_ms / idempotency / [ports.in].*.buffer / [observability]
-# are valid manifest fields per research/01 but the v0.1 compiler does not
-# yet wire them into the runtime. Declaring them triggers a compile warning
-# pointing to docs/v0.1-audit.md. They are intentionally omitted here so this
-# example stays warning-free; users who declare them get an explicit notice.
+[observability]
+metrics = ["duration_ms"]
+traces  = "auto"

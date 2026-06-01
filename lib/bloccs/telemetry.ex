@@ -68,7 +68,6 @@ defmodule Bloccs.Telemetry do
   def detach_default_logger, do: :telemetry.detach(@handler_id)
 
   @doc "List the events the default logger handler subscribes to."
-  @spec events() :: [[atom()]]
   def events, do: @events
 
   @doc false

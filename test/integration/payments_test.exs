@@ -39,6 +39,7 @@ defmodule Bloccs.Integration.PaymentsTest do
   setup do
     MockHTTP.reset()
     MockDB.reset()
+    Bloccs.Idempotency.reset()
     :ok = subscribe_to_exposed_ports()
     :ok
   end
@@ -122,6 +123,82 @@ defmodule Bloccs.Integration.PaymentsTest do
 
     refute_receive {:bloccs_sink, :payments, :notify_ok, :delivered, _}, 200
     refute_receive {:bloccs_sink, :payments, :ledger, :committed, _}, 200
+  end
+
+  test "idempotency: a duplicate request_id is charged only once" do
+    MockHTTP.stub("POST", "https://api.stripe.com/v1/charges", fn _req ->
+      %{"id" => "ch_dup", "status" => "succeeded"}
+    end)
+
+    MockHTTP.stub("POST", "https://api.postmarkapp.com/email", fn _req ->
+      %{"MessageID" => "msg_dup"}
+    end)
+
+    req = %{
+      method: "POST",
+      path: "/charges",
+      body: %{
+        "customer_id" => "cus_dup",
+        "amount_cents" => 500,
+        "currency" => "USD",
+        "request_id" => "req_dup"
+      }
+    }
+
+    push_to_intake(req)
+    # Drain BOTH fanout emits of the first charge (notify_ok + ledger) so the
+    # key is marked and nothing is left in the mailbox before the duplicate.
+    assert_receive {:bloccs_sink, :payments, :notify_ok, :delivered, _}, 2_000
+    assert_receive {:bloccs_sink, :payments, :ledger, :committed, _}, 2_000
+
+    push_to_intake(req)
+    refute_receive {:bloccs_sink, :payments, :ledger, :committed, _}, 500
+    refute_receive {:bloccs_sink, :payments, :notify_ok, :delivered, _}, 200
+  end
+
+  test "telemetry: the charge node emits a stop event with outcome :ok on success" do
+    test_pid = self()
+    handler = "payments-charge-stop"
+
+    :telemetry.attach(
+      handler,
+      [:bloccs, :node, :stop],
+      fn _e, meas, meta, _ ->
+        if meta.node == :charge, do: send(test_pid, {:charge_stop, meas, meta})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    MockHTTP.stub("POST", "https://api.stripe.com/v1/charges", fn _req ->
+      %{"id" => "ch_tel", "status" => "succeeded"}
+    end)
+
+    MockHTTP.stub("POST", "https://api.postmarkapp.com/email", fn _req ->
+      %{"MessageID" => "msg_tel"}
+    end)
+
+    push_to_intake(%{
+      method: "POST",
+      path: "/charges",
+      body: %{
+        "customer_id" => "cus_tel",
+        "amount_cents" => 700,
+        "currency" => "USD",
+        "request_id" => "req_tel"
+      }
+    })
+
+    assert_receive {:charge_stop, %{duration: dur}, %{outcome: :ok, observability: obs}}, 2_000
+    assert is_integer(dur)
+    # The node's declared [observability] block rides along in the metadata.
+    assert obs.metrics == ["duration_ms"]
+
+    # The charge :stop event fires before downstream fanout completes; drain the
+    # downstream emits so they don't bleed into the next test's sink.
+    assert_receive {:bloccs_sink, :payments, :notify_ok, :delivered, _}, 2_000
+    assert_receive {:bloccs_sink, :payments, :ledger, :committed, _}, 2_000
   end
 
   defp subscribe_to_exposed_ports do
