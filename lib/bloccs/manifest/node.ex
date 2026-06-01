@@ -127,7 +127,14 @@ defmodule Bloccs.Manifest.Contract do
 
   @type mfa_ref :: %{module: module(), function: atom(), arity: pos_integer()}
 
-  @type retry :: %{strategy: String.t(), max: non_neg_integer(), on: [String.t()]} | nil
+  @type retry ::
+          %{
+            strategy: String.t(),
+            max: non_neg_integer(),
+            on: [String.t()],
+            base_ms: pos_integer() | nil
+          }
+          | nil
 
   @type idempotency :: %{key: String.t()} | nil
 

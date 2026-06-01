@@ -14,7 +14,7 @@ defmodule Bloccs.Runtime do
       effect_shell(mid, ctx) :: {:emit, port, payload} | {:error, reason}
   """
 
-  alias Bloccs.{Context, Effects, Manifest.Node, Pipeline, Router}
+  alias Bloccs.{Context, Effects, Manifest.Node, Pipeline, Producer, Retry, Router}
   alias Broadway.Message
 
   defmodule Config do
@@ -46,7 +46,7 @@ defmodule Bloccs.Runtime do
   def process(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
     case Pipeline.validate_inbound(manifest, in_port, msg.data) do
       :ok -> run(msg, cfg)
-      {:error, reason} -> Message.failed(msg, reason)
+      {:error, reason} -> fail_or_retry(msg, reason, cfg)
     end
   end
 
@@ -60,9 +60,30 @@ defmodule Bloccs.Runtime do
         msg
 
       {:error, reason} ->
-        Message.failed(msg, reason)
+        fail_or_retry(msg, reason, cfg)
     end
   end
+
+  # On failure, consult the node's retry policy. If the reason is retriable and
+  # attempts remain, schedule a backed-off re-enqueue into this node's own
+  # producer (carrying an incremented attempt count) and ack the current
+  # delivery — a fresh delivery now owns the work. Otherwise fail the message.
+  defp fail_or_retry(%Message{} = msg, reason, %Config{} = cfg) do
+    policy = cfg.manifest.contract.retry
+    attempt = attempt(msg)
+
+    if Retry.retriable?(reason, policy, attempt) do
+      delay = Retry.backoff_ms(policy, attempt)
+      producer = Router.producer_name(cfg.network_id, cfg.local_id, cfg.in_port)
+      Producer.push_after(producer, msg.data, %{bloccs_attempt: attempt + 1}, delay)
+      msg
+    else
+      Message.failed(msg, reason)
+    end
+  end
+
+  defp attempt(%Message{metadata: meta}) when is_map(meta), do: Map.get(meta, :bloccs_attempt, 0)
+  defp attempt(_), do: 0
 
   # No declared timeout: run inline, no Task overhead.
   defp execute(manifest, data, ctx, nil), do: run_node(manifest, data, ctx)

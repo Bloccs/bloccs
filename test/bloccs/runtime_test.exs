@@ -91,7 +91,47 @@ defmodule Bloccs.RuntimeTest do
   timeout_ms = 50
   """
 
-  defp msg(data), do: %Message{data: data, acknowledger: {Bloccs.Producer.Acknowledger, :x, :x}}
+  @retry_manifest ~S"""
+  [node]
+  id = "runtime_retry_demo"
+  version = "0.1.0"
+  kind = "transform"
+
+  [ports.in]
+  inbound = { schema = "RtReq@1" }
+
+  [ports.out]
+  out = { schema = "RtResp@1" }
+
+  [effects]
+
+  [contract]
+  pure_core = "Bloccs.RuntimeTest.Impl.transform/2"
+  effect_shell = "Bloccs.RuntimeTest.Impl.execute/2"
+  retry = { strategy = "constant", max = 2, on = [], base_ms = 5 }
+  """
+
+  # A minimal GenStage consumer that forwards every delivered message to a
+  # test pid — lets us observe what a producer emits without poking internals.
+  defmodule Collector do
+    @moduledoc false
+    use GenStage
+
+    def start_link(producer, owner), do: GenStage.start_link(__MODULE__, {producer, owner})
+
+    @impl true
+    def init({producer, owner}),
+      do: {:consumer, owner, subscribe_to: [{producer, max_demand: 10}]}
+
+    @impl true
+    def handle_events(events, _from, owner) do
+      Enum.each(events, &send(owner, {:consumed, &1}))
+      {:noreply, [], owner}
+    end
+  end
+
+  defp msg(data, meta \\ %{}),
+    do: %Message{data: data, metadata: meta, acknowledger: {Bloccs.Producer.Acknowledger, :x, :x}}
 
   describe "process/2 happy path" do
     test "runs pure_core → effect_shell → dispatch and returns an un-failed message", %{cfg: cfg} do
@@ -141,6 +181,56 @@ defmodule Bloccs.RuntimeTest do
 
       refute match?(%Message{status: {:failed, _}}, result)
       assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"sleep_ms" => 1}}
+    end
+  end
+
+  describe "process/2 retry" do
+    setup %{cfg: cfg} do
+      {:ok, manifest} = Parser.parse_node_string(@retry_manifest)
+      rcfg = %{cfg | manifest: manifest}
+
+      # Stand up the node's own producer (+ a consumer) so scheduled retries
+      # land somewhere observable.
+      producer_name = Bloccs.Router.producer_name(:rt_net, :demo, :inbound)
+      {:ok, prod} = Bloccs.Producer.start_link(name: producer_name)
+      {:ok, cons} = Collector.start_link(prod, self())
+
+      on_exit(fn ->
+        if Process.alive?(cons), do: GenStage.stop(cons)
+        if Process.alive?(prod), do: GenStage.stop(prod)
+      end)
+
+      %{rcfg: rcfg}
+    end
+
+    test "re-enqueues a retriable failure with an incremented attempt count and acks the delivery",
+         %{rcfg: rcfg} do
+      # attempt 0, fails with {:error, :rejected_by_pure} → retriable (on: [])
+      result = Runtime.process(msg(%{"bad" => true}), rcfg)
+
+      # Current delivery is acked (not failed) because a retry now owns the work.
+      refute match?(%Message{status: {:failed, _}}, result)
+
+      assert_receive {:consumed,
+                      %Message{data: %{"bad" => true}, metadata: %{bloccs_attempt: 1}}},
+                     500
+    end
+
+    test "fails (no retry) once the attempt count reaches max", %{rcfg: rcfg} do
+      # Arrive already at attempt 2 == max → no retry, hard fail.
+      result = Runtime.process(msg(%{"bad" => true}, %{bloccs_attempt: 2}), rcfg)
+
+      assert %Message{status: {:failed, :rejected_by_pure}} = result
+      refute_receive {:consumed, _}, 100
+    end
+
+    test "permanent failures (schema mismatch) are not retried even with a policy", %{rcfg: rcfg} do
+      Schema.register("RtReq@1", k: :string)
+
+      result = Runtime.process(msg(%{"k" => 123}), rcfg)
+
+      assert %Message{status: {:failed, {:schema_mismatch, "RtReq@1", _}}} = result
+      refute_receive {:consumed, _}, 100
     end
   end
 

@@ -27,12 +27,33 @@ defmodule Bloccs.Producer do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenStage.start_link(__MODULE__, opts)
 
-  @doc "Push a payload into the producer's buffer. Returns `:ok` or `:no_producer`."
-  @spec push(atom(), term()) :: :ok | :no_producer
-  def push(name, payload) do
+  @doc """
+  Push a payload into the producer's buffer. `meta` becomes the resulting
+  `Broadway.Message`'s `:metadata` (the runtime uses `:bloccs_attempt` to track
+  retries). Returns `:ok` or `:no_producer`.
+  """
+  @spec push(atom(), term(), map()) :: :ok | :no_producer
+  def push(name, payload, meta \\ %{}) do
     case Registry.lookup(@registry, name) do
-      [{pid, _}] -> GenStage.cast(pid, {:push, payload})
+      [{pid, _}] -> GenStage.cast(pid, {:push, payload, meta})
       [] -> :no_producer
+    end
+  end
+
+  @doc """
+  Re-enqueue a payload after `delay_ms`. Used by the runtime to schedule a
+  retry with backoff; the timer lives in the (supervised) producer process.
+  Returns `:ok` or `:no_producer`.
+  """
+  @spec push_after(atom(), term(), map(), non_neg_integer()) :: :ok | :no_producer
+  def push_after(name, payload, meta, delay_ms) do
+    case Registry.lookup(@registry, name) do
+      [{pid, _}] ->
+        Process.send_after(pid, {:enqueue, payload, meta}, delay_ms)
+        :ok
+
+      [] ->
+        :no_producer
     end
   end
 
@@ -55,8 +76,13 @@ defmodule Bloccs.Producer do
   end
 
   @impl GenStage
-  def handle_cast({:push, payload}, state) do
-    deliver(%{state | queue: :queue.in(payload, state.queue)})
+  def handle_cast({:push, payload, meta}, state) do
+    deliver(%{state | queue: :queue.in({payload, meta}, state.queue)})
+  end
+
+  @impl GenStage
+  def handle_info({:enqueue, payload, meta}, state) do
+    deliver(%{state | queue: :queue.in({payload, meta}, state.queue)})
   end
 
   defp deliver(%{pending_demand: 0} = state), do: {:noreply, [], state}
@@ -73,9 +99,10 @@ defmodule Bloccs.Producer do
       {:empty, _} ->
         {Enum.reverse(acc), queue, demand}
 
-      {{:value, payload}, rest} ->
+      {{:value, {payload, meta}}, rest} ->
         msg = %Broadway.Message{
           data: payload,
+          metadata: meta,
           acknowledger: {Bloccs.Producer.Acknowledger, :ignored, :ignored}
         }
 

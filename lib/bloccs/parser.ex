@@ -322,14 +322,12 @@ defmodule Bloccs.Parser do
 
   defp cast_retry(nil), do: nil
 
-  defp cast_retry(%{"strategy" => s, "max" => m, "on" => on}) when is_list(on),
-    do: %{strategy: s, max: m, on: on}
-
   defp cast_retry(map) when is_map(map),
     do: %{
       strategy: Map.get(map, "strategy", "none"),
       max: Map.get(map, "max", 0),
-      on: Map.get(map, "on", [])
+      on: Map.get(map, "on", []),
+      base_ms: Map.get(map, "base_ms")
     }
 
   defp cast_idempotency(nil), do: nil
