@@ -39,9 +39,10 @@ defmodule Bloccs.Compiler.Node do
     pipeline_module = module_name(network, nn)
     pipeline_name = Bloccs.Router.pipeline_name(String.to_atom(network.id), nn.local_id)
 
-    [{in_port, _}] = port_list(manifest.ports_in)
+    [{in_port, in_port_def}] = port_list(manifest.ports_in)
     producer_name = Bloccs.Router.producer_name(String.to_atom(network.id), nn.local_id, in_port)
 
+    buffer = in_port_def && in_port_def.buffer
     concurrency = Map.get(network.deploy.concurrency, nn.local_id, 1)
 
     """
@@ -66,7 +67,7 @@ defmodule Bloccs.Compiler.Node do
         Broadway.start_link(__MODULE__,
           name: #{inspect(pipeline_name)},
           producer: [
-            module: {Bloccs.Producer, [name: #{inspect(producer_name)}]},
+            module: {Bloccs.Producer, [name: #{inspect(producer_name)}, buffer: #{inspect(buffer)}]},
             concurrency: 1
           ],
           processors: [default: [concurrency: Keyword.get(opts, :concurrency, #{concurrency})]]

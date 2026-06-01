@@ -17,6 +17,7 @@ defmodule Bloccs.Producer do
   """
 
   use GenStage
+  require Logger
 
   @registry Bloccs.Registry
 
@@ -66,7 +67,10 @@ defmodule Bloccs.Producer do
      %{
        queue: :queue.new(),
        pending_demand: 0,
-       name: name
+       name: name,
+       # nil = unbounded (the [ports.in].<port>.buffer manifest field)
+       buffer: Keyword.get(opts, :buffer),
+       size: 0
      }}
   end
 
@@ -77,19 +81,45 @@ defmodule Bloccs.Producer do
 
   @impl GenStage
   def handle_cast({:push, payload, meta}, state) do
-    deliver(%{state | queue: :queue.in({payload, meta}, state.queue)})
+    enqueue(state, payload, meta)
   end
 
   @impl GenStage
   def handle_info({:enqueue, payload, meta}, state) do
-    deliver(%{state | queue: :queue.in({payload, meta}, state.queue)})
+    enqueue(state, payload, meta)
   end
+
+  # Bounded enqueue. When the buffer is full we drop the *incoming* message
+  # (push is fire-and-forget, so there's no upstream to back-pressure in v0.2)
+  # and emit a telemetry event so operators can alarm on it. Real demand-based
+  # back-pressure is future work.
+  defp enqueue(state, payload, meta) do
+    if full?(state) do
+      :telemetry.execute(
+        [:bloccs, :producer, :overflow],
+        %{dropped: 1, size: state.size},
+        %{name: state.name, buffer: state.buffer}
+      )
+
+      Logger.warning(
+        "bloccs producer #{inspect(state.name)} buffer full (#{state.buffer}); dropping message"
+      )
+
+      {:noreply, [], state}
+    else
+      deliver(%{state | queue: :queue.in({payload, meta}, state.queue), size: state.size + 1})
+    end
+  end
+
+  defp full?(%{buffer: nil}), do: false
+  defp full?(%{buffer: max, size: size}), do: size >= max
 
   defp deliver(%{pending_demand: 0} = state), do: {:noreply, [], state}
 
   defp deliver(state) do
     {messages, q, demand} = take(state.queue, state.pending_demand, [])
-    {:noreply, messages, %{state | queue: q, pending_demand: demand}}
+    new_state = %{state | queue: q, pending_demand: demand, size: state.size - length(messages)}
+    {:noreply, messages, new_state}
   end
 
   defp take(queue, 0, acc), do: {Enum.reverse(acc), queue, 0}

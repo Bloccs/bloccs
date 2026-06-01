@@ -41,6 +41,7 @@ defmodule Bloccs.MixProject do
       {:toml, "~> 0.7"},
       {:broadway, "~> 1.1"},
       {:gen_stage, "~> 1.2"},
+      {:telemetry, "~> 1.2"},
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.1", only: [:dev, :test]},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
