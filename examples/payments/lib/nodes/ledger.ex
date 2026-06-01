@@ -1,7 +1,7 @@
 defmodule Payments.Nodes.Ledger do
   use Bloccs.Node, manifest: "../../nodes/ledger.bloccs"
 
-  alias Bloccs.Effects.DB.Mock, as: MockDB
+  alias Bloccs.Effects.DB
 
   def transform(charge_completed, _ctx) do
     {:ok,
@@ -17,7 +17,7 @@ defmodule Payments.Nodes.Ledger do
 
   def execute(event, ctx) do
     {:ok, _row} =
-      MockDB.insert(ctx.effects.db, :ledger,
+      DB.insert(ctx.effects.db, :ledger,
         event_type: event.event_type,
         payload: event.payload
       )

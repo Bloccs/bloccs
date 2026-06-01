@@ -8,10 +8,13 @@ defmodule Bloccs.Effects.HTTP.Mock do
 
   alias Bloccs.Effects
 
+  @behaviour Bloccs.Effects.HTTP
+
   defstruct allow: [], methods: [], stubs: nil
 
   @typep t :: %__MODULE__{allow: [String.t()], methods: [String.t()], stubs: pid() | nil}
 
+  @impl true
   @doc "Build the capability struct from a `[effects].http` declaration."
   def new(%{allow: allow, methods: methods}) do
     %__MODULE__{allow: allow, methods: methods, stubs: stubs_pid()}
@@ -31,9 +34,11 @@ defmodule Bloccs.Effects.HTTP.Mock do
   @doc "Clear all stubs. Test-only."
   def reset, do: Agent.update(stubs_pid(), fn _ -> %{} end)
 
+  @impl true
   @spec post(t(), String.t(), term()) :: {:ok, map()} | {:error, term()}
   def post(%__MODULE__{} = cap, url, body), do: dispatch(cap, "POST", url, body)
 
+  @impl true
   @spec get(t(), String.t()) :: {:ok, map()} | {:error, term()}
   def get(%__MODULE__{} = cap, url), do: dispatch(cap, "GET", url, nil)
 

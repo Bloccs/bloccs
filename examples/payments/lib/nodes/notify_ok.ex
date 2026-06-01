@@ -1,7 +1,7 @@
 defmodule Payments.Nodes.NotifyOk do
   use Bloccs.Node, manifest: "../../nodes/notify_ok.bloccs"
 
-  alias Bloccs.Effects.HTTP.Mock, as: MockHTTP
+  alias Bloccs.Effects.HTTP
 
   def transform(charge_completed, _ctx) do
     {:ok,
@@ -13,7 +13,7 @@ defmodule Payments.Nodes.NotifyOk do
   end
 
   def execute(email, ctx) do
-    case MockHTTP.post(ctx.effects.http, "https://api.postmarkapp.com/email", email) do
+    case HTTP.post(ctx.effects.http, "https://api.postmarkapp.com/email", email) do
       {:ok, _} ->
         {:emit, :delivered, %{to: email.to, template: email.template}}
 

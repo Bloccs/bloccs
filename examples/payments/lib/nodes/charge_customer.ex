@@ -9,8 +9,7 @@ defmodule Payments.Nodes.ChargeCustomer do
 
   use Bloccs.Node, manifest: "../../nodes/charge_customer.bloccs"
 
-  alias Bloccs.Effects.HTTP.Mock, as: MockHTTP
-  alias Bloccs.Effects.DB.Mock, as: MockDB
+  alias Bloccs.Effects.{DB, HTTP}
 
   @spec transform(map(), Bloccs.Context.t()) :: {:ok, map()} | {:error, term()}
   def transform(%{} = req, _ctx) do
@@ -37,10 +36,10 @@ defmodule Payments.Nodes.ChargeCustomer do
 
   @spec execute(map(), Bloccs.Context.t()) :: {:emit, atom(), map()}
   def execute(intent, ctx) do
-    case MockHTTP.post(ctx.effects.http, "https://api.stripe.com/v1/charges", intent) do
+    case HTTP.post(ctx.effects.http, "https://api.stripe.com/v1/charges", intent) do
       {:ok, %{"id" => stripe_id, "status" => "succeeded"}} ->
         {:ok, _row} =
-          MockDB.insert(ctx.effects.db, :charges,
+          DB.insert(ctx.effects.db, :charges,
             customer_id: intent.customer,
             stripe_id: stripe_id,
             amount_cents: intent.amount

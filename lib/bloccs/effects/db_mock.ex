@@ -6,10 +6,14 @@ defmodule Bloccs.Effects.DB.Mock do
 
   alias Bloccs.Effects
 
+  @behaviour Bloccs.Effects.DB
+
   defstruct allow: []
 
+  @impl true
   def new(%{allow: allow}), do: %__MODULE__{allow: allow}
 
+  @impl true
   @spec insert(%__MODULE__{}, atom() | String.t(), keyword() | map()) ::
           {:ok, map()} | no_return()
   def insert(%__MODULE__{allow: allow}, table, attrs) do
