@@ -34,13 +34,27 @@ defmodule Bloccs.Effects do
   end
 
   @doc """
-  Build a capability struct from a parsed node manifest. Uses the v0.1 mock
-  backends unless overridden via `:backends`.
+  Build a capability struct from a parsed node manifest.
+
+  The backend module for each axis is resolved by layering, lowest precedence
+  first:
+
+  1. **Built-in defaults** — mock HTTP/DB, real wall-clock/RNG. Safe for tests.
+  2. **App config** — `config :bloccs, :effect_backends, http: ..., db: ...`.
+     This is how production selects the real adapters (`HTTP.Req`, `DB.Ecto`)
+     without touching node source.
+  3. **Per-call `:backends`** — a keyword override, mainly for tests that want
+     a specific backend inline.
+
+  Backend-specific configuration (e.g. the Ecto repo) is read by the backend
+  itself from its own config key — see each adapter's docs.
   """
   @spec bind(Node.t(), keyword()) :: Capabilities.t()
   def bind(%Node{effects: e}, opts \\ []) do
     backends =
-      Keyword.merge(default_backends(), Keyword.get(opts, :backends, []))
+      default_backends()
+      |> Keyword.merge(configured_backends())
+      |> Keyword.merge(Keyword.get(opts, :backends, []))
 
     %Capabilities{
       http: build_axis(:http, e.http, backends),
@@ -57,6 +71,10 @@ defmodule Bloccs.Effects do
       time: Bloccs.Effects.Time.System,
       random: Bloccs.Effects.Random.System
     ]
+  end
+
+  defp configured_backends do
+    Application.get_env(:bloccs, :effect_backends, [])
   end
 
   defp build_axis(_axis, nil, _), do: Bloccs.Effects.Denied.Stub.new(:undeclared)
