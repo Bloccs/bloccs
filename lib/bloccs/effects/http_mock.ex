@@ -43,28 +43,9 @@ defmodule Bloccs.Effects.HTTP.Mock do
   def get(%__MODULE__{} = cap, url), do: dispatch(cap, "GET", url, nil)
 
   defp dispatch(%__MODULE__{allow: allow, methods: methods}, method, url, body) do
-    cond do
-      not method_allowed?(methods, method) ->
-        Effects.deny!(:http, "method #{method} not in declared methods #{inspect(methods)}")
-
-      not host_allowed?(allow, url) ->
-        Effects.deny!(
-          :http,
-          "host of #{url} not in declared allowlist #{inspect(allow)}"
-        )
-
-      true ->
-        run_stub(method, url, body)
-    end
-  end
-
-  defp method_allowed?(methods, method),
-    do: Enum.any?(methods, &(String.upcase(&1) == String.upcase(method)))
-
-  defp host_allowed?(allow, url) do
-    case URI.parse(url) do
-      %URI{host: host} when is_binary(host) -> host in allow
-      _ -> false
+    case Bloccs.Effects.HTTP.Allowlist.check(allow, methods, method, url) do
+      :ok -> run_stub(method, url, body)
+      {:deny, detail} -> Effects.deny!(:http, detail)
     end
   end
 
