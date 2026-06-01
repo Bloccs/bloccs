@@ -43,11 +43,21 @@ defmodule Bloccs.Runtime do
   validation rejects it.
   """
   @spec process(Message.t(), Config.t()) :: Message.t()
-  def process(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
+  def process(%Message{} = msg, %Config{} = cfg) do
+    meta = base_meta(cfg, msg)
+
+    :telemetry.span([:bloccs, :node], meta, fn ->
+      result = do_process(msg, cfg)
+      {result, Map.merge(meta, outcome_meta(result))}
+    end)
+  end
+
+  defp do_process(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
     dedup = dedup_target(cfg, msg.data)
 
     if duplicate?(dedup, msg) do
       # Already-completed key, fresh delivery: ack and skip without re-running.
+      emit(:skipped, %{}, cfg, msg)
       msg
     else
       case Pipeline.validate_inbound(manifest, in_port, msg.data) do
@@ -84,6 +94,7 @@ defmodule Bloccs.Runtime do
       delay = Retry.backoff_ms(policy, attempt)
       producer = Router.producer_name(cfg.network_id, cfg.local_id, cfg.in_port)
       Producer.push_after(producer, msg.data, %{bloccs_attempt: attempt + 1}, delay)
+      emit(:retry, %{delay_ms: delay, next_attempt: attempt + 1}, cfg, msg, %{reason: reason})
       msg
     else
       Message.failed(msg, reason)
@@ -92,6 +103,29 @@ defmodule Bloccs.Runtime do
 
   defp attempt(%Message{metadata: meta}) when is_map(meta), do: Map.get(meta, :bloccs_attempt, 0)
   defp attempt(_), do: 0
+
+  # ---------------- telemetry ----------------
+  # Events (all under [:bloccs, :node, _]): :start / :stop / :exception emitted by
+  # :telemetry.span around execution; :retry when a backed-off retry is scheduled;
+  # :skipped when an idempotent duplicate is dropped. See Bloccs.Telemetry.
+
+  defp base_meta(%Config{} = cfg, %Message{} = msg) do
+    %{
+      network: cfg.network_id,
+      node: cfg.local_id,
+      in_port: cfg.in_port,
+      attempt: attempt(msg),
+      observability: cfg.manifest.observability
+    }
+  end
+
+  defp outcome_meta(%Message{status: {:failed, reason}}), do: %{outcome: :failed, reason: reason}
+  defp outcome_meta(_msg), do: %{outcome: :ok}
+
+  defp emit(event, measurements, %Config{} = cfg, %Message{} = msg, extra \\ %{}) do
+    meta = cfg |> base_meta(msg) |> Map.merge(extra)
+    :telemetry.execute([:bloccs, :node, event], measurements, meta)
+  end
 
   # Resolve the `{scope, key}` to dedup on, or nil when the node declares no
   # idempotency key (or the key field is absent from the payload).

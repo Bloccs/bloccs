@@ -294,6 +294,70 @@ defmodule Bloccs.RuntimeTest do
     end
   end
 
+  describe "process/2 telemetry" do
+    setup do
+      ref = make_ref()
+      handler = "rt-tel-#{inspect(ref)}"
+
+      events = [
+        [:bloccs, :node, :start],
+        [:bloccs, :node, :stop],
+        [:bloccs, :node, :retry],
+        [:bloccs, :node, :skipped]
+      ]
+
+      test_pid = self()
+
+      :telemetry.attach_many(
+        handler,
+        events,
+        fn event, meas, meta, _ -> send(test_pid, {:telemetry, event, meas, meta}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      :ok
+    end
+
+    test "emits span start + stop with outcome :ok on success", %{cfg: cfg} do
+      Runtime.process(msg(%{"k" => "v"}), cfg)
+
+      assert_receive {:telemetry, [:bloccs, :node, :start], %{system_time: _},
+                      %{network: :rt_net, node: :demo, in_port: :inbound, attempt: 0}}
+
+      assert_receive {:telemetry, [:bloccs, :node, :stop], %{duration: _}, %{outcome: :ok}}
+    end
+
+    test "stop carries outcome :failed and the reason on failure", %{cfg: cfg} do
+      Runtime.process(msg(%{"bad" => true}), cfg)
+
+      assert_receive {:telemetry, [:bloccs, :node, :stop], _meas,
+                      %{outcome: :failed, reason: :rejected_by_pure}}
+    end
+
+    test "emits a :retry event when a retry is scheduled", %{cfg: cfg} do
+      {:ok, manifest} = Parser.parse_node_string(@retry_manifest)
+      rcfg = %{cfg | manifest: manifest}
+
+      Runtime.process(msg(%{"bad" => true}), rcfg)
+
+      assert_receive {:telemetry, [:bloccs, :node, :retry], %{delay_ms: _, next_attempt: 1},
+                      %{reason: :rejected_by_pure}}
+    end
+
+    test "emits a :skipped event when a duplicate is dropped", %{cfg: cfg} do
+      Bloccs.Idempotency.reset()
+      on_exit(&Bloccs.Idempotency.reset/0)
+      {:ok, manifest} = Parser.parse_node_string(@idempotent_manifest)
+      icfg = %{cfg | manifest: manifest}
+
+      Runtime.process(msg(%{"request_id" => "dup1"}), icfg)
+      Runtime.process(msg(%{"request_id" => "dup1"}), icfg)
+
+      assert_receive {:telemetry, [:bloccs, :node, :skipped], %{}, %{node: :demo}}
+    end
+  end
+
   describe "process/2 inbound validation" do
     test "rejects payloads that don't match the port schema before running the node", %{cfg: cfg} do
       Schema.register("RtReq@1", k: :string)
