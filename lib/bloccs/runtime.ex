@@ -54,19 +54,51 @@ defmodule Bloccs.Runtime do
     caps = Effects.bind(manifest)
     ctx = Context.new(effects: caps, received_at: DateTime.utc_now())
 
+    case execute(manifest, data, ctx, manifest.contract.timeout_ms) do
+      {:emit, port, payload} ->
+        Router.dispatch(cfg.network_id, cfg.local_id, port, payload)
+        msg
+
+      {:error, reason} ->
+        Message.failed(msg, reason)
+    end
+  end
+
+  # No declared timeout: run inline, no Task overhead.
+  defp execute(manifest, data, ctx, nil), do: run_node(manifest, data, ctx)
+
+  # Declared timeout: run pure+shell in a linked Task and bound it. The Task
+  # computes the *outcome* only — router dispatch happens in the caller — so a
+  # timed-out (brutally killed) Task can never emit a half-finished message.
+  # `:timeout` is a transient reason (M19 retry treats it as retriable).
+  defp execute(manifest, data, ctx, timeout_ms) when is_integer(timeout_ms) do
+    task = Task.async(fn -> run_node(manifest, data, ctx) end)
+
+    case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, outcome} -> outcome
+      {:exit, reason} -> {:error, {:node_crash, reason}}
+      nil -> {:error, :timeout}
+    end
+  end
+
+  # Runs the node contract and normalizes every result/failure into either
+  # `{:emit, port, payload}` or `{:error, reason}`. Rescues/catches so a raising
+  # node never crashes the Task or the processor.
+  defp run_node(manifest, data, ctx) do
     pure = manifest.contract.pure_core
     shell = manifest.contract.effect_shell
 
-    try do
-      with {:ok, intermediate} <- apply(pure.module, pure.function, [data, ctx]),
-           {:emit, port, payload} <- apply(shell.module, shell.function, [intermediate, ctx]) do
-        Router.dispatch(cfg.network_id, cfg.local_id, port, payload)
-        msg
-      else
-        {:error, reason} -> Message.failed(msg, reason)
-      end
-    rescue
-      e -> Message.failed(msg, e)
+    with {:ok, intermediate} <- apply(pure.module, pure.function, [data, ctx]),
+         {:emit, _port, _payload} = emit <-
+           apply(shell.module, shell.function, [intermediate, ctx]) do
+      emit
+    else
+      {:error, reason} -> {:error, reason}
     end
+  rescue
+    e -> {:error, e}
+  catch
+    :throw, value -> {:error, {:throw, value}}
+    :exit, reason -> {:error, {:node_crash, reason}}
   end
 end

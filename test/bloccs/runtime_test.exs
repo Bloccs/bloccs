@@ -17,6 +17,12 @@ defmodule Bloccs.RuntimeTest do
     # Pure core: classify the payload. Honors a `:raise` flag to exercise rescue.
     def transform(%{"raise" => true}, _ctx), do: raise("boom in pure_core")
     def transform(%{"bad" => true}, _ctx), do: {:error, :rejected_by_pure}
+
+    def transform(%{"sleep_ms" => ms} = data, _ctx) when is_integer(ms) do
+      Process.sleep(ms)
+      {:ok, data}
+    end
+
     def transform(data, _ctx), do: {:ok, data}
 
     # Effect shell: emit on the named port, or fail / route by content.
@@ -65,6 +71,26 @@ defmodule Bloccs.RuntimeTest do
     %{cfg: cfg}
   end
 
+  @timeout_manifest ~S"""
+  [node]
+  id = "runtime_timeout_demo"
+  version = "0.1.0"
+  kind = "transform"
+
+  [ports.in]
+  inbound = { schema = "RtReq@1" }
+
+  [ports.out]
+  out = { schema = "RtResp@1" }
+
+  [effects]
+
+  [contract]
+  pure_core = "Bloccs.RuntimeTest.Impl.transform/2"
+  effect_shell = "Bloccs.RuntimeTest.Impl.execute/2"
+  timeout_ms = 50
+  """
+
   defp msg(data), do: %Message{data: data, acknowledger: {Bloccs.Producer.Acknowledger, :x, :x}}
 
   describe "process/2 happy path" do
@@ -94,6 +120,27 @@ defmodule Bloccs.RuntimeTest do
     test "rescues exceptions raised in the node and fails the message", %{cfg: cfg} do
       assert %Message{status: {:failed, %RuntimeError{}}} =
                Runtime.process(msg(%{"raise" => true}), cfg)
+    end
+  end
+
+  describe "process/2 timeout_ms" do
+    setup %{cfg: cfg} do
+      {:ok, manifest} = Parser.parse_node_string(@timeout_manifest)
+      %{tcfg: %{cfg | manifest: manifest}}
+    end
+
+    test "fails with :timeout when the node exceeds timeout_ms", %{tcfg: tcfg} do
+      assert %Message{status: {:failed, :timeout}} =
+               Runtime.process(msg(%{"sleep_ms" => 500}), tcfg)
+
+      refute_receive {:bloccs_sink, _, _, _, _}, 200
+    end
+
+    test "completes normally when the node finishes within timeout_ms", %{tcfg: tcfg} do
+      result = Runtime.process(msg(%{"sleep_ms" => 1}), tcfg)
+
+      refute match?(%Message{status: {:failed, _}}, result)
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"sleep_ms" => 1}}
     end
   end
 
