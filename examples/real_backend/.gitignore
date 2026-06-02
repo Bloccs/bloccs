@@ -1,0 +1,11 @@
+/_build/
+/deps/
+/cover/
+erl_crash.dump
+*.ez
+# Generated bloccs pipeline source
+/_build/bloccs_generated/
+# SQLite database files created by the demo
+*.db
+*.db-*
+/priv/*.db

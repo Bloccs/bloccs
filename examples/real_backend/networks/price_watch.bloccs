@@ -1,0 +1,25 @@
+[network]
+id      = "price_watch"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+fetch  = { use = "../nodes/fetch_quote.bloccs" }
+record = { use = "../nodes/record_quote.bloccs" }
+
+[[edges]]
+from = "fetch.quote_fetched"
+to   = "record.quote_fetched"
+
+[expose]
+in  = { request = "fetch.quote_requested" }
+out = { done = "record.recorded" }
+
+[supervision]
+strategy     = "one_for_one"
+max_restarts = 5
+max_seconds  = 60
+
+[deploy]
+concurrency = { fetch = 2, record = 1 }
+placement   = "default"

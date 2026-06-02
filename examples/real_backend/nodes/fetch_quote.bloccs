@@ -1,0 +1,26 @@
+[node]
+id      = "fetch_quote"
+version = "0.1.0"
+kind    = "transform"
+
+[doc]
+intent = "Fetch the current price for a symbol from the quote API over real HTTP."
+owner  = "@example"
+
+[ports.in]
+quote_requested = { schema = "QuoteRequest@1" }
+
+[ports.out]
+quote_fetched = { schema = "QuoteFetched@1" }
+
+[effects]
+http = { allow = ["localhost"], methods = ["GET"] }
+
+[contract]
+pure_core    = "PriceWatch.Nodes.FetchQuote.transform/2"
+effect_shell = "PriceWatch.Nodes.FetchQuote.execute/2"
+timeout_ms   = 5000
+retry        = { strategy = "exponential", max = 2, on = ["timeout"], base_ms = 50 }
+
+[observability]
+metrics = ["duration_ms"]

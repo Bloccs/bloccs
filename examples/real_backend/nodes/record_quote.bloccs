@@ -1,0 +1,23 @@
+[node]
+id      = "record_quote"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Persist a fetched quote to the database. Idempotent on request_id."
+owner  = "@example"
+
+[ports.in]
+quote_fetched = { schema = "QuoteFetched@1" }
+
+[ports.out]
+recorded = { schema = "QuoteRecorded@1" }
+
+[effects]
+db   = { allow = ["quotes:insert"] }
+time = "wall_clock"
+
+[contract]
+pure_core    = "PriceWatch.Nodes.RecordQuote.transform/2"
+effect_shell = "PriceWatch.Nodes.RecordQuote.execute/2"
+idempotency  = { key = "request_id" }
