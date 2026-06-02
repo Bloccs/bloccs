@@ -57,45 +57,53 @@ defmodule Bloccs.ProducerTest do
     assert_receive {:got, :x}, 500
   end
 
-  describe "bounded buffer" do
-    test "drops messages past the buffer and emits an overflow telemetry event" do
+  describe "bounded buffer back-pressure" do
+    test "parks the caller when full and admits once a consumer drains (no drops)" do
       name = :"prod_buf_#{:erlang.unique_integer([:positive, :monotonic])}"
       # No consumer → demand stays 0 → pushed items sit in the queue.
       {:ok, pid} = Producer.start_link(name: name, buffer: 2)
       on_exit(fn -> if Process.alive?(pid), do: GenStage.stop(pid) end)
 
       test_pid = self()
-      handler = "overflow-#{name}"
+      handler = "bp-#{name}"
 
       :telemetry.attach(
         handler,
-        [:bloccs, :producer, :overflow],
-        fn _event, meas, meta, _ -> send(test_pid, {:overflow, meas, meta}) end,
+        [:bloccs, :producer, :backpressure],
+        fn _e, meas, meta, _ -> send(test_pid, {:backpressure, meas, meta}) end,
         nil
       )
 
       on_exit(fn -> :telemetry.detach(handler) end)
 
-      :ok = Producer.push(name, %{n: 1})
-      :ok = Producer.push(name, %{n: 2})
-      # third exceeds buffer=2 → dropped
-      :ok = Producer.push(name, %{n: 3})
+      # First two fill the buffer and return immediately.
+      assert :ok = Producer.push(name, %{n: 1})
+      assert :ok = Producer.push(name, %{n: 2})
 
-      assert_receive {:overflow, %{dropped: 1, size: 2}, %{name: ^name, buffer: 2}}, 500
+      # The third should PARK (buffer full, no consumer). Push it from a separate
+      # process so we can observe that it does not return yet.
+      caller = spawn(fn -> send(test_pid, {:pushed, Producer.push(name, %{n: 3})}) end)
 
-      # Attaching a consumer now drains exactly the two buffered items.
+      assert_receive {:backpressure, %{size: 2}, %{name: ^name, buffer: 2}}, 500
+      refute_receive {:pushed, _}, 200
+      assert Process.alive?(caller)
+
+      # Attaching a consumer drains the buffer, which admits the parked push.
       {:ok, _consumer} = Sink.start_link(pid, self())
+      assert_receive {:pushed, :ok}, 1_000
+
+      # All three are eventually delivered — nothing was dropped.
       assert_receive {:got, %{n: 1}}, 500
       assert_receive {:got, %{n: 2}}, 500
-      refute_receive {:got, %{n: 3}}, 100
+      assert_receive {:got, %{n: 3}}, 500
     end
 
-    test "an unbounded producer (buffer: nil) never drops" do
+    test "an unbounded producer (buffer: nil) never parks" do
       name = :"prod_unbounded_#{:erlang.unique_integer([:positive, :monotonic])}"
       {:ok, pid} = Producer.start_link(name: name, buffer: nil)
       on_exit(fn -> if Process.alive?(pid), do: GenStage.stop(pid) end)
 
-      for n <- 1..50, do: :ok = Producer.push(name, %{n: n})
+      for n <- 1..50, do: assert(:ok = Producer.push(name, %{n: n}))
 
       {:ok, _consumer} = Sink.start_link(pid, self())
       assert_receive {:got, %{n: 1}}, 500

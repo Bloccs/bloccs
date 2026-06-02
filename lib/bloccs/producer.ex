@@ -8,43 +8,63 @@ end
 
 defmodule Bloccs.Producer do
   @moduledoc """
-  A push-based GenStage producer used as the input port of a compiled node.
+  A GenStage producer used as the input port of a compiled node.
 
   Broadway names producer processes itself (e.g.
   `MyPipeline.Broadway.Producer_0`), so we additionally register a stable
-  canonical name in `Bloccs.Registry` keyed by
-  `{network_id, node_id, in_port}`. `push/2` resolves through the registry.
+  canonical name in `Bloccs.Registry` keyed by `{network_id, node_id, in_port}`.
+  `push/3` resolves through the registry.
+
+  ## Back-pressure (v0.4)
+
+  `push/3` is **synchronous** and bounded by the port's `buffer`. When the
+  buffer is full the caller is *parked* — the call does not return until a
+  downstream consumer drains space — so a slow consumer propagates back-pressure
+  up the graph instead of dropping messages. An unbounded port (`buffer: nil`)
+  never parks. The wait is bounded by `config :bloccs, :push_timeout` (default
+  `:infinity`); on timeout `push/3` returns `{:error, :timeout}` rather than
+  blocking forever.
   """
 
   use GenStage
-  require Logger
 
   @registry Bloccs.Registry
 
   @doc """
-  Start a producer. The `:name` option is the canonical Registry key the
-  router will push to.
+  Start a producer. The `:name` option is the canonical Registry key the router
+  pushes to; `:buffer` (optional) bounds the queue for back-pressure.
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenStage.start_link(__MODULE__, opts)
 
   @doc """
-  Push a payload into the producer's buffer. `meta` becomes the resulting
-  `Broadway.Message`'s `:metadata` (the runtime uses `:bloccs_attempt` to track
-  retries). Returns `:ok` or `:no_producer`.
+  Push a payload into the producer, blocking if the buffer is full until space
+  frees (see "Back-pressure"). `meta` becomes the `Broadway.Message`'s
+  `:metadata` (the runtime uses `:bloccs_attempt` for retries).
+
+  Returns `:ok`, `:no_producer` (name not registered), or `{:error, :timeout}`
+  (waited past `:push_timeout`).
   """
-  @spec push(atom(), term(), map()) :: :ok | :no_producer
+  @spec push(atom(), term(), map()) :: :ok | :no_producer | {:error, :timeout}
   def push(name, payload, meta \\ %{}) do
     case Registry.lookup(@registry, name) do
-      [{pid, _}] -> GenStage.cast(pid, {:push, payload, meta})
-      [] -> :no_producer
+      [{pid, _}] ->
+        try do
+          GenStage.call(pid, {:push, payload, meta}, push_timeout())
+        catch
+          :exit, _ -> {:error, :timeout}
+        end
+
+      [] ->
+        :no_producer
     end
   end
 
   @doc """
-  Re-enqueue a payload after `delay_ms`. Used by the runtime to schedule a
-  retry with backoff; the timer lives in the (supervised) producer process.
-  Returns `:ok` or `:no_producer`.
+  Re-enqueue a payload after `delay_ms` (used by the runtime to schedule a retry
+  with backoff; the timer lives in the supervised producer process). If the
+  buffer is full when the timer fires, the enqueue is retried shortly rather
+  than dropped. Returns `:ok` or `:no_producer`.
   """
   @spec push_after(atom(), term(), map(), non_neg_integer()) :: :ok | :no_producer
   def push_after(name, payload, meta, delay_ms) do
@@ -70,56 +90,89 @@ defmodule Bloccs.Producer do
        name: name,
        # nil = unbounded (the [ports.in].<port>.buffer manifest field)
        buffer: Keyword.get(opts, :buffer),
-       size: 0
+       size: 0,
+       # callers parked waiting for buffer space: {from, payload, meta}
+       blocked: :queue.new()
      }}
   end
 
   @impl GenStage
   def handle_demand(incoming_demand, state) do
-    deliver(%{state | pending_demand: state.pending_demand + incoming_demand})
+    {events, state} = drain(%{state | pending_demand: state.pending_demand + incoming_demand}, [])
+    {:noreply, events, state}
   end
 
   @impl GenStage
-  def handle_cast({:push, payload, meta}, state) do
-    enqueue(state, payload, meta)
+  def handle_call({:push, payload, meta}, from, state) do
+    if room?(state) do
+      {events, state} = state |> enqueue(payload, meta) |> drain([])
+      {:reply, :ok, events, state}
+    else
+      # Park the caller until a consumer drains space — this is the back-pressure.
+      :telemetry.execute(
+        [:bloccs, :producer, :backpressure],
+        %{size: state.size},
+        %{name: state.name, buffer: state.buffer}
+      )
+
+      {:noreply, [], %{state | blocked: :queue.in({from, payload, meta}, state.blocked)}}
+    end
   end
 
   @impl GenStage
   def handle_info({:enqueue, payload, meta}, state) do
-    enqueue(state, payload, meta)
-  end
-
-  # Bounded enqueue. When the buffer is full we drop the *incoming* message
-  # (push is fire-and-forget, so there's no upstream to back-pressure in v0.2)
-  # and emit a telemetry event so operators can alarm on it. Real demand-based
-  # back-pressure is future work.
-  defp enqueue(state, payload, meta) do
-    if full?(state) do
-      :telemetry.execute(
-        [:bloccs, :producer, :overflow],
-        %{dropped: 1, size: state.size},
-        %{name: state.name, buffer: state.buffer}
-      )
-
-      Logger.warning(
-        "bloccs producer #{inspect(state.name)} buffer full (#{state.buffer}); dropping message"
-      )
-
-      {:noreply, [], state}
+    if room?(state) do
+      {events, state} = state |> enqueue(payload, meta) |> drain([])
+      {:noreply, events, state}
     else
-      deliver(%{state | queue: :queue.in({payload, meta}, state.queue), size: state.size + 1})
+      # No caller to park (timer-driven retry); try again shortly, don't drop.
+      Process.send_after(self(), {:enqueue, payload, meta}, 25)
+      {:noreply, [], state}
     end
   end
 
-  defp full?(%{buffer: nil}), do: false
-  defp full?(%{buffer: max, size: size}), do: size >= max
+  # ---------------- internals ----------------
 
-  defp deliver(%{pending_demand: 0} = state), do: {:noreply, [], state}
+  defp room?(%{buffer: nil}), do: true
+  defp room?(%{buffer: max, size: size}), do: size < max
+
+  defp enqueue(state, payload, meta),
+    do: %{state | queue: :queue.in({payload, meta}, state.queue), size: state.size + 1}
+
+  # Deliver queued events to pending demand, then admit parked callers into the
+  # freed space, repeating until neither makes progress.
+  defp drain(state, acc) do
+    {events, state} = deliver(state)
+    {admitted, state} = admit_blocked(state)
+
+    if events == [] and admitted == 0 do
+      {acc, state}
+    else
+      drain(state, acc ++ events)
+    end
+  end
+
+  defp deliver(%{pending_demand: 0} = state), do: {[], state}
 
   defp deliver(state) do
     {messages, q, demand} = take(state.queue, state.pending_demand, [])
-    new_state = %{state | queue: q, pending_demand: demand, size: state.size - length(messages)}
-    {:noreply, messages, new_state}
+    {messages, %{state | queue: q, pending_demand: demand, size: state.size - length(messages)}}
+  end
+
+  # Admit parked callers while there is buffer room, replying :ok to each.
+  defp admit_blocked(state, count \\ 0) do
+    if room?(state) do
+      case :queue.out(state.blocked) do
+        {:empty, _} ->
+          {count, state}
+
+        {{:value, {from, payload, meta}}, rest} ->
+          GenStage.reply(from, :ok)
+          admit_blocked(enqueue(%{state | blocked: rest}, payload, meta), count + 1)
+      end
+    else
+      {count, state}
+    end
   end
 
   defp take(queue, 0, acc), do: {Enum.reverse(acc), queue, 0}
@@ -139,4 +192,6 @@ defmodule Bloccs.Producer do
         take(rest, demand - 1, [msg | acc])
     end
   end
+
+  defp push_timeout, do: Application.get_env(:bloccs, :push_timeout, :infinity)
 end

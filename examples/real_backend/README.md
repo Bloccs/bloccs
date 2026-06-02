@@ -66,8 +66,8 @@ network `price_watch` running — pushing quote requests
   → pushed USD (req-1)
   → pushed BTC (req-2)
   → pushed USD (req-1)
-  ← recorded USD = 768
-  ← recorded BTC = 562
+  ← recorded #1 USD = 768
+  ← recorded #2 BTC = 562
 
 quotes table (2 rows):
   id | request_id | symbol | price | recorded_at
@@ -77,10 +77,12 @@ quotes table (2 rows):
 (3 requests pushed, 2 rows written — the duplicate req-1 was deduped)
 ```
 
-Three requests in, two rows out: the repeated `req-1` is dropped by the
-`record_quote` node's declared idempotency. The prices come from real HTTP calls
-to the local stub; the rows are real SQLite writes (set `log: :debug` on the
-repo in `config/config.exs` to watch the SQL).
+Three requests in, two rows out: the repeated `req-1` is skipped by the
+`record_quote` node's declared idempotency (concurrency-safe — it reserves the
+key, so even simultaneous duplicates can't both write). The `#1`/`#2` are the
+real SQLite autoincrement ids, echoed back via the adapter's `returning: [:id]`
+config. Prices come from real HTTP calls to the local stub; rows are real SQLite
+writes (set `log: :debug` on the repo in `config/config.exs` to watch the SQL).
 
 ## Using the bloccs CLI directly
 

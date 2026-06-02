@@ -10,7 +10,8 @@ config :price_watch, ecto_repos: [PriceWatch.Repo]
 
 config :price_watch, PriceWatch.Repo,
   database: Path.expand("../priv/price_watch.db", __DIR__),
-  pool_size: 5,
+  # SQLite is single-writer; one connection avoids write contention.
+  pool_size: 1,
   # Quiet per-query logging so the demo output reads cleanly; flip to a level
   # like :debug to watch the real SQL go by.
   log: false

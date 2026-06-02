@@ -24,6 +24,10 @@ defmodule Mix.Tasks.PriceWatch.Demo do
   def run(_args) do
     Mix.Task.run("app.start")
 
+    # Start from a clean table so the demo output is reproducible (the DB file
+    # persists across runs; the in-memory idempotency tracker does not).
+    PriceWatch.Repo.query!("DELETE FROM quotes")
+
     {:ok, network} = Parser.parse_network(@network)
     :ok = Validator.validate_network(network)
     {:ok, sup} = Compiler.compile_and_load(network)

@@ -86,7 +86,7 @@ defmodule Mix.Tasks.Bloccs.Run do
 
     {node, port} = resolve_target_port(network, Keyword.get(opts, :port))
     producer = Router.producer_name(String.to_atom(network.id), node, port)
-    Producer.push(producer, payload)
+    _ = Producer.push(producer, payload)
 
     Mix.shell().info("→ pushed message to #{node}.#{port}")
     Process.sleep(Keyword.get(opts, :wait, 2) * 1000)

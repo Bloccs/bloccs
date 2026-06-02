@@ -34,10 +34,11 @@ defmodule Bloccs.Telemetry do
     - measurements: `%{}`
     - metadata: base metadata
 
-  `:producer` overflow is reported separately by `Bloccs.Producer`:
+  `:producer` back-pressure is reported separately by `Bloccs.Producer`:
 
-  - `[:bloccs, :producer, :overflow]`
-    - measurements: `%{dropped, size}`
+  - `[:bloccs, :producer, :backpressure]` — a `push/3` had to park because the
+    buffer was full (the caller waits until a consumer drains space)
+    - measurements: `%{size}`
     - metadata: `%{name, buffer}`
   """
 
@@ -48,7 +49,7 @@ defmodule Bloccs.Telemetry do
     [:bloccs, :node, :exception],
     [:bloccs, :node, :retry],
     [:bloccs, :node, :skipped],
-    [:bloccs, :producer, :overflow]
+    [:bloccs, :producer, :backpressure]
   ]
 
   @handler_id "bloccs-default-logger"
@@ -98,8 +99,12 @@ defmodule Bloccs.Telemetry do
     Logger.log(level, "bloccs #{meta.network}.#{meta.node} skipped duplicate (idempotent)")
   end
 
-  def handle_event([:bloccs, :producer, :overflow], %{dropped: n}, meta, _config) do
-    Logger.warning("bloccs producer #{inspect(meta.name)} dropped #{n} (buffer #{meta.buffer})")
+  def handle_event([:bloccs, :producer, :backpressure], %{size: size}, meta, %{level: level}) do
+    Logger.log(
+      level,
+      "bloccs producer #{inspect(meta.name)} back-pressure: buffer full " <>
+        "(#{meta.buffer}, size #{size}); caller parked until drained"
+    )
   end
 
   defp reason_suffix(%{outcome: :failed, reason: reason}), do: " — #{inspect(reason)}"

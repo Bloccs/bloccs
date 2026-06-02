@@ -33,17 +33,17 @@ defmodule Bloccs.TelemetryTest do
     assert log =~ "bloccs n.node_a ok"
   end
 
-  test "default handler logs producer overflow as a warning" do
-    :ok = Telemetry.attach_default_logger()
+  test "default handler logs producer back-pressure" do
+    :ok = Telemetry.attach_default_logger(:info)
 
     log =
       capture_log(fn ->
-        :telemetry.execute([:bloccs, :producer, :overflow], %{dropped: 2}, %{
+        :telemetry.execute([:bloccs, :producer, :backpressure], %{size: 10}, %{
           name: :p,
           buffer: 10
         })
       end)
 
-    assert log =~ "dropped 2"
+    assert log =~ "back-pressure"
   end
 end
