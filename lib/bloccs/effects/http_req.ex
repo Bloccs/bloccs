@@ -33,6 +33,17 @@ defmodule Bloccs.Effects.HTTP.Req do
 
   @impl true
   def new(%{allow: allow, methods: methods}) do
+    unless Code.ensure_loaded?(Req) do
+      raise """
+      Bloccs.Effects.HTTP.Req requires the optional :req dependency, which is not \
+      available. Add it to your application's deps to use the real HTTP backend:
+
+          {:req, "~> 0.5"}
+
+      (or select a different http backend in config :bloccs, :effect_backends).
+      """
+    end
+
     %__MODULE__{allow: allow, methods: methods, options: configured_options()}
   end
 

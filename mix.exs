@@ -1,7 +1,7 @@
 defmodule Bloccs.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.1.0"
   @source_url "https://github.com/Bloccs/bloccs"
 
   def project do
@@ -42,7 +42,9 @@ defmodule Bloccs.MixProject do
       {:broadway, "~> 1.1"},
       {:gen_stage, "~> 1.2"},
       {:telemetry, "~> 1.2"},
-      {:req, "~> 0.5"},
+      # Optional: only needed by the real HTTP backend (Bloccs.Effects.HTTP.Req).
+      # The default is the mock; consumers add :req themselves to use HTTP.Req.
+      {:req, "~> 0.5", optional: true},
       {:jason, "~> 1.4"},
       {:stream_data, "~> 1.1", only: [:dev, :test]},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -58,6 +60,9 @@ defmodule Bloccs.MixProject do
     [
       check: [
         "format --check-formatted",
+        # Prove the library compiles cleanly even when optional deps (:req) are
+        # absent — the official Library Guidelines recommendation.
+        "compile --no-optional-deps --warnings-as-errors",
         "compile --warnings-as-errors",
         "test",
         "dialyzer"
@@ -86,7 +91,7 @@ defmodule Bloccs.MixProject do
       main: "readme",
       source_url: @source_url,
       source_ref: "v#{@version}",
-      extras: ["README.md"]
+      extras: ["README.md", "LICENSE"]
     ]
   end
 end

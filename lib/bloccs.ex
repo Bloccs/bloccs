@@ -3,8 +3,8 @@ defmodule Bloccs do
   A typed declarative IR for Agentic Computation Graphs (ACGs) that compiles
   to a Broadway supervision tree on the BEAM.
 
-  See `Bloccs.Manifest`, `Bloccs.Parser`, `Bloccs.Validator`, and
-  `Bloccs.Compiler` for the v0.1 surface.
+  See `Bloccs.Manifest.Node`, `Bloccs.Manifest.Network`, `Bloccs.Parser`,
+  `Bloccs.Validator`, and `Bloccs.Compiler` for the v0.1 surface.
   """
 
   @doc """
