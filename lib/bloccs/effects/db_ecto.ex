@@ -20,11 +20,18 @@ defmodule Bloccs.Effects.DB.Ecto do
 
   - The declared `"table:insert"` scope is enforced; a violation raises
     `Bloccs.Effects.Denied` (like the mock).
-  - On success returns `{:ok, attrs_as_map}`. v0.3 does not echo
-    database-generated columns (a schemaless `insert_all` would need an explicit
-    `returning` column list); include any id you need in `attrs`, or read it
-    back yourself. Richer returning is future work.
+  - On success returns `{:ok, row}`. If you configure `returning` columns
+    (below), database-generated values (e.g. an auto-increment `id`) are merged
+    into the returned row; otherwise the row is just the attrs you inserted.
   - A repo/database error is caught and returned as `{:error, exception}`.
+
+  ## Returning generated columns
+
+  A schemaless `insert_all` needs an explicit column list to echo generated
+  values. Configure one list, applied to every insert (set it to your primary
+  key — tables lacking those columns will error):
+
+      config :bloccs, Bloccs.Effects.DB.Ecto, repo: MyApp.Repo, returning: [:id]
 
   For a fully custom datastore, implement the `Bloccs.Effects.DB` behaviour
   directly instead of using this adapter.
@@ -34,15 +41,22 @@ defmodule Bloccs.Effects.DB.Ecto do
 
   alias Bloccs.Effects
 
-  defstruct allow: [], repo: nil
+  defstruct allow: [], repo: nil, returning: nil
 
-  @type t :: %__MODULE__{allow: [String.t()], repo: module() | nil}
+  @type t :: %__MODULE__{
+          allow: [String.t()],
+          repo: module() | nil,
+          returning: [atom()] | nil
+        }
 
   @impl true
-  def new(%{allow: allow}), do: %__MODULE__{allow: allow, repo: configured_repo()}
+  def new(%{allow: allow}) do
+    cfg = Application.get_env(:bloccs, __MODULE__, [])
+    %__MODULE__{allow: allow, repo: cfg[:repo], returning: cfg[:returning]}
+  end
 
   @impl true
-  def insert(%__MODULE__{allow: allow, repo: repo}, table, attrs) do
+  def insert(%__MODULE__{allow: allow, repo: repo, returning: returning}, table, attrs) do
     scope = "#{table}:insert"
 
     cond do
@@ -57,20 +71,18 @@ defmodule Bloccs.Effects.DB.Ecto do
         )
 
       true ->
-        do_insert(repo, table, Map.new(attrs))
+        do_insert(repo, table, Map.new(attrs), returning)
     end
   end
 
-  defp do_insert(repo, table, row) do
-    {_count, _returned} = repo.insert_all(to_string(table), [row])
-    {:ok, row}
+  defp do_insert(repo, table, row, returning) do
+    opts = if returning, do: [returning: returning], else: []
+
+    case repo.insert_all(to_string(table), [row], opts) do
+      {_count, [generated]} when is_map(generated) -> {:ok, Map.merge(row, generated)}
+      {_count, _none} -> {:ok, row}
+    end
   rescue
     e -> {:error, e}
-  end
-
-  defp configured_repo do
-    :bloccs
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:repo)
   end
 end

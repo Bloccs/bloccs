@@ -22,7 +22,7 @@ defmodule PriceWatch.Nodes.RecordQuote do
   def execute(%{symbol: symbol, price: price, request_id: request_id}, ctx) do
     recorded_at = ctx.effects.time |> Time.now() |> DateTime.to_iso8601()
 
-    {:ok, _row} =
+    {:ok, row} =
       DB.insert(ctx.effects.db, :quotes,
         request_id: request_id,
         symbol: symbol,
@@ -30,6 +30,8 @@ defmodule PriceWatch.Nodes.RecordQuote do
         recorded_at: recorded_at
       )
 
-    {:emit, :recorded, %{symbol: symbol, price: price}}
+    # `row` carries the DB-generated `id` because the adapter is configured with
+    # `returning: [:id]`.
+    {:emit, :recorded, %{id: row[:id], symbol: symbol, price: price}}
   end
 end

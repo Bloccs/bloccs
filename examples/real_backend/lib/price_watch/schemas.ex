@@ -18,6 +18,7 @@ defmodule PriceWatch.Schemas do
     )
 
     Schema.register("QuoteRecorded@1",
+      id: :integer,
       symbol: :string,
       price: :integer
     )

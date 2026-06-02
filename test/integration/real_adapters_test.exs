@@ -19,7 +19,7 @@ defmodule Bloccs.Integration.RealAdaptersTest do
                  ])
 
   defmodule StubRepo do
-    def insert_all(source, entries) do
+    def insert_all(source, entries, _opts) do
       send(Application.get_env(:bloccs, :real_test_pid), {:db_insert, source, entries})
       {length(entries), nil}
     end

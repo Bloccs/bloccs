@@ -53,8 +53,8 @@ defmodule Mix.Tasks.PriceWatch.Demo do
 
   defp collect_emits(n) do
     receive do
-      {:bloccs_sink, :price_watch, :record, :recorded, %{symbol: s, price: p}} ->
-        info("  ← recorded #{s} = #{p}")
+      {:bloccs_sink, :price_watch, :record, :recorded, %{id: id, symbol: s, price: p}} ->
+        info("  ← recorded ##{id} #{s} = #{p}")
         collect_emits(n - 1)
     after
       3_000 -> :ok

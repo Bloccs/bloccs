@@ -24,5 +24,6 @@ config :bloccs, :effect_backends,
   http: Bloccs.Effects.HTTP.Req,
   db: Bloccs.Effects.DB.Ecto
 
-# Point the bloccs Ecto DB adapter at our repo.
-config :bloccs, Bloccs.Effects.DB.Ecto, repo: PriceWatch.Repo
+# Point the bloccs Ecto DB adapter at our repo, and echo the generated `id`
+# back on insert (the `quotes` table's autoincrement primary key).
+config :bloccs, Bloccs.Effects.DB.Ecto, repo: PriceWatch.Repo, returning: [:id]

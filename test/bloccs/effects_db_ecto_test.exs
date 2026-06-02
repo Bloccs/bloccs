@@ -9,17 +9,21 @@ defmodule Bloccs.EffectsDBEctoTest do
   alias Bloccs.Effects.DB.Ecto, as: EctoDB
 
   defmodule FakeRepo do
-    def insert_all(source, entries) do
+    def insert_all(source, entries, opts) do
       if pid = Application.get_env(:bloccs, :test_repo_pid) do
-        send(pid, {:inserted, source, entries})
+        send(pid, {:inserted, source, entries, opts})
       end
 
-      {length(entries), nil}
+      # Echo generated columns only when the caller asked for them.
+      case Keyword.get(opts, :returning) do
+        nil -> {length(entries), nil}
+        cols -> {length(entries), Enum.map(entries, fn _ -> Map.new(cols, &{&1, 99}) end)}
+      end
     end
   end
 
   defmodule FailingRepo do
-    def insert_all(_source, _entries), do: raise("db unavailable")
+    def insert_all(_source, _entries, _opts), do: raise("db unavailable")
   end
 
   setup do
@@ -31,8 +35,9 @@ defmodule Bloccs.EffectsDBEctoTest do
     :ok
   end
 
-  defp cap(repo, allow \\ ["charges:insert"]) do
-    Application.put_env(:bloccs, EctoDB, repo: repo)
+  defp cap(repo, opts \\ []) do
+    allow = Keyword.get(opts, :allow, ["charges:insert"])
+    Application.put_env(:bloccs, EctoDB, [repo: repo] ++ Keyword.take(opts, [:returning]))
     EctoDB.new(%{allow: allow})
   end
 
@@ -43,8 +48,20 @@ defmodule Bloccs.EffectsDBEctoTest do
     assert {:ok, %{customer_id: "c", stripe_id: "s"}} =
              EctoDB.insert(cap, :charges, customer_id: "c", stripe_id: "s")
 
-    # schemaless insert_all gets the table name as a string + a list of one row
-    assert_receive {:inserted, "charges", [%{customer_id: "c", stripe_id: "s"}]}
+    # schemaless insert_all gets the table name as a string + a list of one row;
+    # with no returning configured, opts carry no :returning
+    assert_receive {:inserted, "charges", [%{customer_id: "c", stripe_id: "s"}], opts}
+    refute Keyword.has_key?(opts, :returning)
+  end
+
+  test "merges database-generated columns into the row when returning is configured" do
+    Application.put_env(:bloccs, :test_repo_pid, self())
+    cap = cap(FakeRepo, returning: [:id])
+
+    assert {:ok, %{customer_id: "c", id: 99}} =
+             EctoDB.insert(cap, :charges, customer_id: "c")
+
+    assert_receive {:inserted, "charges", [%{customer_id: "c"}], [returning: [:id]]}
   end
 
   test "an out-of-scope table raises Denied" do
