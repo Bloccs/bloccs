@@ -2,6 +2,10 @@ defmodule Bloccs.Effects.DB.Mock do
   @moduledoc """
   Mock DB backend. Refuses out-of-scope table actions. Records every
   successful insert for test introspection via `inserts/0`.
+
+  Test/dev backend (the default). Its insert log is an Agent started lazily on
+  first use and is NOT supervised — fine for tests, not a production process.
+  Use `Bloccs.Effects.DB.Ecto` in production.
   """
 
   alias Bloccs.Effects

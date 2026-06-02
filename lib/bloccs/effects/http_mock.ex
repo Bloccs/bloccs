@@ -3,7 +3,9 @@ defmodule Bloccs.Effects.HTTP.Mock do
   Mock HTTP backend. Refuses non-allowed hosts. Returns stubbed responses
   registered per-node via `stub/3`.
 
-  Designed for v0.1 tests. Replace with a `Req`-backed adapter at v0.2.
+  Test/dev backend (the default). Its stub registry is an Agent started lazily
+  on first use and is NOT part of any supervision tree — fine for tests, not a
+  production process. Use `Bloccs.Effects.HTTP.Req` in production.
   """
 
   alias Bloccs.Effects

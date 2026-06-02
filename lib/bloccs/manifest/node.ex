@@ -40,14 +40,27 @@ defmodule Bloccs.Manifest.Node do
   @valid_kinds ~w(source transform router sink)a
 
   @doc """
-  Cast a known `kind` string to its atom form.
+  Cast a `kind` string to its atom form. Returns `{:ok, kind}` or `:error` for
+  an unknown value — lets callers pattern-match instead of rescuing.
   """
+  @spec cast_kind(String.t()) :: {:ok, kind()} | :error
+  def cast_kind(value) when is_binary(value) do
+    atom = String.to_existing_atom(value)
+    if atom in @valid_kinds, do: {:ok, atom}, else: :error
+  rescue
+    # value isn't an existing atom → definitely not a known kind
+    ArgumentError -> :error
+  end
+
+  def cast_kind(_), do: :error
+
+  @doc "Bang variant of `cast_kind/1`; raises `ArgumentError` on an unknown kind."
   @spec cast_kind!(String.t()) :: kind()
   def cast_kind!(value) do
-    atom = String.to_existing_atom(value)
-    if atom in @valid_kinds, do: atom, else: raise(ArgumentError, "unknown kind #{value}")
-  rescue
-    ArgumentError -> reraise(ArgumentError, "unknown node kind #{inspect(value)}", __STACKTRACE__)
+    case cast_kind(value) do
+      {:ok, kind} -> kind
+      :error -> raise(ArgumentError, "unknown node kind #{inspect(value)}")
+    end
   end
 
   @doc "The list of valid kinds."

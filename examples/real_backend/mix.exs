@@ -26,6 +26,9 @@ defmodule PriceWatch.MixProject do
   defp deps do
     [
       {:bloccs, path: "../.."},
+      # bloccs marks :req optional — a consumer using the real HTTP.Req backend
+      # brings it themselves (just as we bring ecto_sqlite3 for DB.Ecto).
+      {:req, "~> 0.5"},
       {:ecto_sql, "~> 3.12"},
       {:ecto_sqlite3, "~> 0.17"},
       {:bandit, "~> 1.5"},

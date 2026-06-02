@@ -194,9 +194,10 @@ defmodule Bloccs.Parser do
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
 
   defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k}) do
-    {:ok, %{id: id, version: v, kind: Node.cast_kind!(k)}}
-  rescue
-    e in ArgumentError -> {:error, [%Error{message: Exception.message(e)}]}
+    case Node.cast_kind(k) do
+      {:ok, kind} -> {:ok, %{id: id, version: v, kind: kind}}
+      :error -> {:error, [%Error{message: "unknown node kind #{inspect(k)}"}]}
+    end
   end
 
   defp cast_node_meta(map) do
@@ -547,26 +548,32 @@ defmodule Bloccs.Parser do
   end
 
   defp cast_supervision(map, network_path) when is_map(map) do
-    strategy =
-      case Map.get(map, "strategy") do
-        nil -> :one_for_one
-        s -> Supervision.cast_strategy!(s)
-      end
+    case cast_strategy_field(Map.get(map, "strategy")) do
+      {:ok, strategy} ->
+        sup = %Supervision{
+          strategy: strategy,
+          max_restarts: Map.get(map, "max_restarts", 3),
+          max_seconds: Map.get(map, "max_seconds", 5)
+        }
 
-    sup = %Supervision{
-      strategy: strategy,
-      max_restarts: Map.get(map, "max_restarts", 3),
-      max_seconds: Map.get(map, "max_seconds", 5)
-    }
+        {sup, []}
 
-    {sup, []}
-  rescue
-    e in ArgumentError ->
-      {%Supervision{},
-       [%Error{file: network_path, section: "[supervision]", message: Exception.message(e)}]}
+      :error ->
+        {%Supervision{},
+         [
+           %Error{
+             file: network_path,
+             section: "[supervision]",
+             message: "unknown supervision strategy #{inspect(Map.get(map, "strategy"))}"
+           }
+         ]}
+    end
   end
 
   defp cast_supervision(_, _), do: {%Supervision{}, []}
+
+  defp cast_strategy_field(nil), do: {:ok, :one_for_one}
+  defp cast_strategy_field(s), do: Supervision.cast_strategy(s)
 
   defp cast_deploy(map) when is_map(map) do
     concurrency =

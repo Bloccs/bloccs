@@ -87,11 +87,9 @@ defmodule Bloccs.Effects do
 end
 
 defmodule Bloccs.Effects.Denied.Stub do
-  @moduledoc """
-  The capability stub installed for axes that are NOT declared on a node.
-
-  Any call to it raises `Bloccs.Effects.Denied`.
-  """
+  # The capability stub installed for axes that are NOT declared on a node.
+  # Any call to it raises `Bloccs.Effects.Denied`. Internal detail.
+  @moduledoc false
 
   defstruct [:reason]
 

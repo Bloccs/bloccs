@@ -10,8 +10,9 @@ backends, with zero external services**:
   file via `Bloccs.Effects.DB.Ecto` (schemaless `INSERT`).
 
 It consumes `bloccs` as a path dependency — exactly how a downstream project
-would — and brings its own Ecto/SQLite stack, demonstrating that bloccs forces
-no database dependency on you.
+would — and brings its own `req` + Ecto/SQLite stack, demonstrating that bloccs
+forces no HTTP-client or database dependency on you (both `:req` and Ecto are
+optional / bring-your-own).
 
 ## The network
 

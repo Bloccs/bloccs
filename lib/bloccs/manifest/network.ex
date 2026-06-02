@@ -67,13 +67,26 @@ defmodule Bloccs.Manifest.Supervision do
 
   @valid ~w(one_for_one one_for_all rest_for_one)a
 
-  @spec cast_strategy!(String.t()) :: strategy()
-  def cast_strategy!(value) when is_binary(value) do
+  @doc """
+  Cast a supervision `strategy` string to its atom form. Returns `{:ok, atom}`
+  or `:error` for an unknown value.
+  """
+  @spec cast_strategy(String.t()) :: {:ok, strategy()} | :error
+  def cast_strategy(value) when is_binary(value) do
     atom = String.to_existing_atom(value)
-    if atom in @valid, do: atom, else: raise(ArgumentError, "unknown strategy #{value}")
+    if atom in @valid, do: {:ok, atom}, else: :error
   rescue
-    ArgumentError ->
-      reraise(ArgumentError, "unknown supervision strategy #{inspect(value)}", __STACKTRACE__)
+    ArgumentError -> :error
+  end
+
+  def cast_strategy(_), do: :error
+
+  @spec cast_strategy!(String.t()) :: strategy()
+  def cast_strategy!(value) do
+    case cast_strategy(value) do
+      {:ok, strategy} -> strategy
+      :error -> raise(ArgumentError, "unknown supervision strategy #{inspect(value)}")
+    end
   end
 
   def valid_strategies, do: @valid
