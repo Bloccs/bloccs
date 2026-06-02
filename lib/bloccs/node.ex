@@ -171,9 +171,19 @@ defmodule Bloccs.Node do
     end)
   end
 
+  # The syntactic effect-leak check relies on ExAST, which is a dev/test-only
+  # dependency of bloccs — it is NOT present when bloccs is used as a dependency
+  # by a downstream app. In that case we skip the compile-time warning entirely;
+  # the runtime capability struct still refuses undeclared calls
+  # (`Bloccs.Effects.Denied`), which is the actual guarantee. Dynamic dispatch
+  # (`apply/3`) keeps the compiler from warning about the optional module.
   defp effect_axis_referenced?(bodies, axis) do
-    pattern = "ctx.effects.#{axis}"
-    Enum.any?(bodies, fn body -> ExAST.Patcher.find_all(body, pattern) != [] end)
+    if Code.ensure_loaded?(ExAST.Patcher) do
+      pattern = "ctx.effects.#{axis}"
+      Enum.any?(bodies, fn body -> apply(ExAST.Patcher, :find_all, [body, pattern]) != [] end)
+    else
+      false
+    end
   end
 
   defp emit_unwired_field_warnings(manifest, env) do
