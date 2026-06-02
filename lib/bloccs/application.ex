@@ -7,7 +7,8 @@ defmodule Bloccs.Application do
   def start(_type, _args) do
     children = [
       {Registry, keys: :unique, name: Bloccs.Registry},
-      Bloccs.Idempotency
+      Bloccs.Idempotency,
+      Bloccs.Router
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Bloccs.Supervisor)

@@ -30,7 +30,6 @@ defmodule Bloccs.Router do
   """
   @spec register(atom(), edges()) :: :ok
   def register(network_id, edges) when is_atom(network_id) and is_list(edges) do
-    ensure_started()
     GenServer.call(__MODULE__, {:register, network_id, edges})
   end
 
@@ -42,8 +41,6 @@ defmodule Bloccs.Router do
   """
   @spec dispatch(atom(), atom(), atom(), term()) :: :ok
   def dispatch(network_id, from_node, from_port, payload) do
-    ensure_started()
-
     targets = lookup(network_id, from_node, from_port)
 
     Enum.each(targets, fn {to_node, to_port} ->
@@ -62,20 +59,17 @@ defmodule Bloccs.Router do
   @doc "Return targets for a given source port; used by tests."
   @spec lookup(atom(), atom(), atom()) :: [endpoint()]
   def lookup(network_id, from_node, from_port) do
-    ensure_started()
     GenServer.call(__MODULE__, {:lookup, network_id, from_node, from_port})
   end
 
   @doc "Register a sink listener (a pid) for a particular exposed port."
   @spec register_sink(atom(), atom(), atom(), pid()) :: :ok
   def register_sink(network_id, node_id, port, pid) when is_pid(pid) do
-    ensure_started()
     GenServer.call(__MODULE__, {:register_sink, network_id, node_id, port, pid})
   end
 
   @doc "Look up a sink. Returns `{:ok, pid}` or `:error`."
   def sink_lookup(network_id, node_id, port) do
-    ensure_started()
     GenServer.call(__MODULE__, {:sink_lookup, network_id, node_id, port})
   end
 
@@ -137,18 +131,5 @@ defmodule Bloccs.Router do
     Enum.reduce(edges, %{}, fn {from, tos}, acc ->
       Map.update(acc, from, tos, &(&1 ++ tos))
     end)
-  end
-
-  defp ensure_started do
-    case Process.whereis(__MODULE__) do
-      nil ->
-        case GenServer.start(__MODULE__, [], name: __MODULE__) do
-          {:ok, _} -> :ok
-          {:error, {:already_started, _}} -> :ok
-        end
-
-      _ ->
-        :ok
-    end
   end
 end
