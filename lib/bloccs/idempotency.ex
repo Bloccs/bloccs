@@ -4,17 +4,18 @@ defmodule Bloccs.Idempotency do
   declaring `[contract].idempotency = { key = "request_id" }` drops duplicate
   deliveries instead of re-running its effects.
 
-  ## Semantics (v0.2)
+  ## Semantics (v0.4)
 
-  Keys are marked **on successful completion**, and checked at the start of a
-  *fresh* delivery (retries bypass the check — they must be allowed to proceed).
-  This means bloccs dedups against work that has already *finished*; it does not
-  reserve in-flight keys, so two simultaneous first-deliveries of the same key
-  can both run. In-flight reservation is deferred to a later version.
+  A key is **reserved on entry** via an atomic `:ets.insert_new`, so two
+  simultaneous first-deliveries of the same key cannot both proceed — exactly
+  one wins the reservation and runs; the other is treated as a duplicate. On
+  successful completion the entry is kept (and its TTL refreshed); on terminal
+  failure it is **released**, so a genuinely new submission can be reprocessed.
+  Retries bypass reservation (they already own the key from the first attempt).
 
   Entries expire after `config :bloccs, :idempotency_ttl_ms` (default 1 hour) and
-  are swept periodically. The backing ETS table is public with read concurrency:
-  `seen?/2` reads it directly; the GenServer owns the table and runs the sweep.
+  are swept periodically — this also frees reservations abandoned by a crashed
+  process. The backing ETS table is public with read+write concurrency.
   """
 
   use GenServer
@@ -30,16 +31,43 @@ defmodule Bloccs.Idempotency do
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @doc """
-  Has `key` already been processed for `scope` (within the TTL window)?
-
-  Safe to call before the tracker has started — returns `false` if the table
-  doesn't exist yet.
+  Has `key` already been reserved or completed for `scope` (within the TTL
+  window)? Safe to call before the tracker has started — returns `false`.
   """
   @spec seen?(scope(), term()) :: boolean()
   def seen?(scope, key) do
     case :ets.whereis(@table) do
       :undefined -> false
       _ -> :ets.member(@table, {scope, key})
+    end
+  end
+
+  @doc """
+  Atomically reserve `key` for `scope`. Returns `true` if the caller now owns
+  the key (proceed), or `false` if it was already reserved/completed (treat as a
+  duplicate). Fail-open: returns `true` if the tracker hasn't started.
+  """
+  @spec reserve(scope(), term()) :: boolean()
+  def reserve(scope, key) do
+    case :ets.whereis(@table) do
+      :undefined -> true
+      _ -> :ets.insert_new(@table, {{scope, key}, now_ms()})
+    end
+  end
+
+  @doc """
+  Release a previously reserved `key` (on terminal failure), so a fresh
+  submission can be reprocessed. No-op if the tracker hasn't started.
+  """
+  @spec release(scope(), term()) :: :ok
+  def release(scope, key) do
+    case :ets.whereis(@table) do
+      :undefined ->
+        :ok
+
+      _ ->
+        :ets.delete(@table, {scope, key})
+        :ok
     end
   end
 

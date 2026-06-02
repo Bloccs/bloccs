@@ -55,15 +55,17 @@ defmodule Bloccs.Runtime do
   defp do_process(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
     dedup = dedup_target(cfg, msg.data)
 
-    if duplicate?(dedup, msg) do
-      # Already-completed key, fresh delivery: ack and skip without re-running.
-      emit(:skipped, %{}, cfg, msg)
-      msg
-    else
-      case Pipeline.validate_inbound(manifest, in_port, msg.data) do
-        :ok -> run(msg, cfg, dedup)
-        {:error, reason} -> fail_or_retry(msg, reason, cfg)
-      end
+    case claim(dedup, msg) do
+      :duplicate ->
+        # Key already reserved (in-flight) or completed: ack and skip.
+        emit(:skipped, %{}, cfg, msg)
+        msg
+
+      :proceed ->
+        case Pipeline.validate_inbound(manifest, in_port, msg.data) do
+          :ok -> run(msg, cfg, dedup)
+          {:error, reason} -> fail_or_retry(msg, reason, cfg, dedup)
+        end
     end
   end
 
@@ -78,7 +80,7 @@ defmodule Bloccs.Runtime do
         msg
 
       {:error, reason} ->
-        fail_or_retry(msg, reason, cfg)
+        fail_or_retry(msg, reason, cfg, dedup)
     end
   end
 
@@ -86,7 +88,7 @@ defmodule Bloccs.Runtime do
   # attempts remain, schedule a backed-off re-enqueue into this node's own
   # producer (carrying an incremented attempt count) and ack the current
   # delivery — a fresh delivery now owns the work. Otherwise fail the message.
-  defp fail_or_retry(%Message{} = msg, reason, %Config{} = cfg) do
+  defp fail_or_retry(%Message{} = msg, reason, %Config{} = cfg, dedup) do
     policy = cfg.manifest.contract.retry
     attempt = attempt(msg)
 
@@ -95,8 +97,11 @@ defmodule Bloccs.Runtime do
       producer = Router.producer_name(cfg.network_id, cfg.local_id, cfg.in_port)
       Producer.push_after(producer, msg.data, %{bloccs_attempt: attempt + 1}, delay)
       emit(:retry, %{delay_ms: delay, next_attempt: attempt + 1}, cfg, msg, %{reason: reason})
+      # Keep the reservation — the scheduled retry will complete or release it.
       msg
     else
+      # Terminal failure: release the reservation so the key can be reprocessed.
+      release(dedup)
       Message.failed(msg, reason)
     end
   end
@@ -154,11 +159,23 @@ defmodule Bloccs.Runtime do
     ArgumentError -> nil
   end
 
-  defp duplicate?(nil, _msg), do: false
-  defp duplicate?({scope, key}, msg), do: attempt(msg) == 0 and Idempotency.seen?(scope, key)
+  # Atomically claim the key for this delivery. Retries (attempt > 0) already
+  # own the key from the first attempt, so they bypass reservation.
+  defp claim(nil, _msg), do: :proceed
+
+  defp claim({scope, key}, msg) do
+    cond do
+      attempt(msg) > 0 -> :proceed
+      Idempotency.reserve(scope, key) -> :proceed
+      true -> :duplicate
+    end
+  end
 
   defp mark_done(nil), do: :ok
   defp mark_done({scope, key}), do: Idempotency.mark(scope, key)
+
+  defp release(nil), do: :ok
+  defp release({scope, key}), do: Idempotency.release(scope, key)
 
   # No declared timeout: run inline, no Task overhead.
   defp execute(manifest, data, ctx, nil), do: run_node(manifest, data, ctx)

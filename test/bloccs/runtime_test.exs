@@ -281,6 +281,26 @@ defmodule Bloccs.RuntimeTest do
       assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"request_id" => "r2"}}
     end
 
+    test "concurrent first-deliveries of one key: exactly one runs (in-flight reservation)",
+         %{icfg: icfg} do
+      # Each delivery sleeps, so every reservation is attempted while the winner
+      # is still in-flight (not yet marked done) — this proves in-flight dedup,
+      # not merely completed-key dedup.
+      payload = %{"request_id" => "concurrent-1", "sleep_ms" => 80}
+
+      results =
+        1..5
+        |> Enum.map(fn _ -> Task.async(fn -> Runtime.process(msg(payload), icfg) end) end)
+        |> Task.await_many(2_000)
+
+      # Exactly one emit reaches the sink.
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out, %{"request_id" => "concurrent-1"}}, 500
+      refute_receive {:bloccs_sink, :rt_net, :demo, :out, _}, 150
+
+      # One ran, four were skipped — none failed.
+      assert Enum.all?(results, &(not match?(%Message{status: {:failed, _}}, &1)))
+    end
+
     test "a failed first delivery does not mark the key (so it can be reprocessed)", %{icfg: icfg} do
       # `bad` makes pure_core fail; key must NOT be marked.
       assert %Message{status: {:failed, _}} =
