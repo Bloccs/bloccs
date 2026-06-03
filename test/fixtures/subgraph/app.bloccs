@@ -1,0 +1,18 @@
+[network]
+id      = "app"
+version = "0.1.0"
+
+[nodes]
+head = { use = "head.bloccs" }
+pipe = { use = "pipe.bloccs" }
+
+[[edges]]
+from = "head.go"
+to   = "pipe.entry"
+
+[expose]
+in  = { start = "head.start" }
+out = { done = "pipe.exit" }
+
+[supervision]
+strategy = "one_for_one"

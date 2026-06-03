@@ -371,13 +371,16 @@ defmodule Bloccs.Parser do
     {edges, edge_errors} = cast_edges(edges_raw, path)
     {rewritten_edges, rewrite_errors} = rewrite_subgraph_edges(edges, subgraph_index, path)
     {expose, expose_errors} = cast_expose(expose_raw, path)
+    {expose, expose_rewrite_errors} = rewrite_subgraph_expose(expose, subgraph_index, path)
     {sup, sup_errors} = cast_supervision(sup_raw, path)
     deploy = cast_deploy(deploy_raw)
 
     meta_errors = check_network_meta(meta, path)
 
     errors =
-      meta_errors ++ node_errors ++ edge_errors ++ rewrite_errors ++ expose_errors ++ sup_errors
+      meta_errors ++
+        node_errors ++
+        edge_errors ++ rewrite_errors ++ expose_errors ++ expose_rewrite_errors ++ sup_errors
 
     if errors == [] do
       {:ok,
@@ -581,11 +584,11 @@ defmodule Bloccs.Parser do
   defp rewrite_subgraph_edges(edges, subidx, path) do
     {rev, errs} =
       Enum.reduce(edges, {[], []}, fn %Edge{from: from, to: tos}, {acc, errs} ->
-        {new_from, from_errs} = resolve_subgraph_endpoint(from, :out, subidx, path)
+        {new_from, from_errs} = resolve_subgraph_endpoint(from, :out, subidx, path, "[[edges]]")
 
         {new_tos, to_errs} =
           Enum.reduce(tos, {[], []}, fn ep, {tacc, terrs} ->
-            {r, e} = resolve_subgraph_endpoint(ep, :in, subidx, path)
+            {r, e} = resolve_subgraph_endpoint(ep, :in, subidx, path, "[[edges]]")
             {[r | tacc], terrs ++ e}
           end)
 
@@ -595,7 +598,25 @@ defmodule Bloccs.Parser do
     {Enum.reverse(rev), errs}
   end
 
-  defp resolve_subgraph_endpoint({node, port} = ep, dir, subidx, path) do
+  # A parent network's own [expose] may reference a child subgraph's exposed
+  # ports; resolve those to the namespaced internal endpoints too, so the parent
+  # stays composable and the validator sees real ports.
+  defp rewrite_subgraph_expose(expose, subidx, _path) when map_size(subidx) == 0, do: {expose, []}
+
+  defp rewrite_subgraph_expose(%Expose{in: ins, out: outs}, subidx, path) do
+    {new_in, in_errs} = rewrite_expose_section(ins, :in, subidx, path)
+    {new_out, out_errs} = rewrite_expose_section(outs, :out, subidx, path)
+    {%Expose{in: new_in, out: new_out}, in_errs ++ out_errs}
+  end
+
+  defp rewrite_expose_section(section, dir, subidx, path) do
+    Enum.reduce(section, {%{}, []}, fn {name, ep}, {acc, errs} ->
+      {resolved, e} = resolve_subgraph_endpoint(ep, dir, subidx, path, "[expose].#{dir}")
+      {Map.put(acc, name, resolved), errs ++ e}
+    end)
+  end
+
+  defp resolve_subgraph_endpoint({node, port} = ep, dir, subidx, path, section) do
     case Map.fetch(subidx, node) do
       :error ->
         {ep, []}
@@ -609,7 +630,7 @@ defmodule Bloccs.Parser do
 
           :error ->
             {ep,
-             [err(path, "[[edges]]", "subgraph `#{node}` does not expose #{dir}-port `#{port}`")]}
+             [err(path, section, "subgraph `#{node}` does not expose #{dir}-port `#{port}`")]}
         end
     end
   end

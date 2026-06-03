@@ -1,0 +1,16 @@
+[node]
+id      = "sg_down"
+version = "0.1.0"
+kind    = "sink"
+
+[ports.in]
+mid = { schema = "Msg@1" }
+
+[ports.out]
+output = { schema = "Msg@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.SubgraphFixtures.Down.transform/2"
+effect_shell = "Bloccs.Integration.SubgraphFixtures.Down.execute/2"

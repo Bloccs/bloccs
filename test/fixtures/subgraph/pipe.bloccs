@@ -1,0 +1,15 @@
+[network]
+id      = "pipe"
+version = "0.1.0"
+
+[nodes]
+up   = { use = "up.bloccs" }
+down = { use = "down.bloccs" }
+
+[[edges]]
+from = "up.mid"
+to   = "down.mid"
+
+[expose]
+in  = { entry = "up.input" }
+out = { exit = "down.output" }

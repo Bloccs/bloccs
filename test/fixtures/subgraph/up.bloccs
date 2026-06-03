@@ -1,0 +1,16 @@
+[node]
+id      = "sg_up"
+version = "0.1.0"
+kind    = "transform"
+
+[ports.in]
+input = { schema = "Msg@1" }
+
+[ports.out]
+mid = { schema = "Msg@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.SubgraphFixtures.Up.transform/2"
+effect_shell = "Bloccs.Integration.SubgraphFixtures.Up.execute/2"

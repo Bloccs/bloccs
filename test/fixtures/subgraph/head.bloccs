@@ -1,0 +1,16 @@
+[node]
+id      = "sg_head"
+version = "0.1.0"
+kind    = "transform"
+
+[ports.in]
+start = { schema = "Msg@1" }
+
+[ports.out]
+go = { schema = "Msg@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.SubgraphFixtures.Head.transform/2"
+effect_shell = "Bloccs.Integration.SubgraphFixtures.Head.execute/2"
