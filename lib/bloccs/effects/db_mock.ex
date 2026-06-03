@@ -47,12 +47,19 @@ defmodule Bloccs.Effects.DB.Mock do
 
   defp ensure_pid do
     case Process.whereis(__MODULE__) do
-      nil ->
-        {:ok, pid} = Agent.start_link(fn -> [] end, name: __MODULE__)
-        pid
+      nil -> start_log()
+      pid -> pid
+    end
+  end
 
-      pid ->
-        pid
+  # Started UNLINKED so the insert log survives the VM, not the first caller.
+  # `start_link` would tie the agent's life to whatever (test) process first
+  # touched it; it would then die on that process's exit and a later caller would
+  # race onto a dead name. `start` (+ already-started handling) avoids that.
+  defp start_log do
+    case Agent.start(fn -> [] end, name: __MODULE__) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
     end
   end
 end
