@@ -1,57 +1,99 @@
 # bloccs
 
-A typed declarative IR for **Agentic Computation Graphs (ACGs)** that compiles
-to a Broadway supervision tree on the BEAM.
+**Typed, supervised dataflow on the BEAM.** You describe a graph of processing
+stages as TOML; bloccs type-checks the wiring, enforces what each stage is
+allowed to do, and compiles it to a Broadway/GenStage supervision tree.
 
-> "Microsoft's declarative workflows have `GotoAction`. That's not declarative —
-> that's BASIC in YAML." Bloccs is the answer: a real graph, typed effects, and
-> a supervisor tree underneath.
+## The problem it solves
 
-## Status
+Plenty of backend work is a *graph of stages*: ingest → validate → enrich →
+branch → persist/notify. On the BEAM you'd build that today by hand-wiring a few
+Broadway pipelines and a supervisor. That works, but nothing checks it:
 
-**v0.1 — pre-release.** Not yet on Hex; APIs may change before the first
-release. The compiler core is, however, feature-complete for the v0.1 vision:
-the full **parse → validate → compile → run** loop works, every declared
-runtime contract is honored, the effect adapters are real (behind a config
-switch), networks compose, and structural coverage is real. See
-[`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
+- the **connections between stages are untyped** — stage A emits a map, stage B
+  expects a different shape, and you find out in production;
+- the **side effects are unconstrained** — any stage can call any host or table;
+  nothing says `enrich` is only allowed to `GET` the enrichment service;
+- **retry / timeout / idempotency / back-pressure** get re-implemented, slightly
+  differently, in every pipeline;
+- the **topology lives in your head** (and a supervisor module), not in a
+  reviewable artifact.
 
-## Quickstart
+bloccs makes the graph a declared, checked thing. You write the topology and the
+per-stage contracts as TOML; bloccs rejects a graph whose edges don't type-match
+*before it runs*, refuses an effect a node didn't declare, and generates the
+Broadway supervision tree — as real, debuggable `.ex` source — with the retry /
+timeout / idempotency / back-pressure already wired in.
+
+> **Why not just write Elixir, or use Broadway directly?** You can — and for a
+> *single* pipeline you should (see [How it compares](#how-it-compares)). bloccs
+> earns its keep once you have a *graph* and want the edges (schemas), the
+> effects (capabilities), and the per-node policy declared and machine-checked
+> rather than maintained by hand. The next section shows the two checks that
+> aren't possible with plain Broadway.
+
+## What it catches before it runs
+
+This is the part you can't get from hand-wired Elixir. Both examples below are
+real output from the tour example (`examples/tour`).
+
+**1. Mismatched edges are rejected at validation time.**
+`examples/tour/networks/pipeline_mismatch.bloccs` wires an out-port carrying
+`WordRequest@1` into an in-port that expects `Definition@1`. Validate it:
 
 ```bash
-# scaffold a complete, runnable starter project (mix project + a sample node,
-# its schemas, and a one-node network)
-mix bloccs.new my_flow
-cd my_flow
-mix deps.get
-
-# validate, compile to a Broadway supervision tree, then run a message through
-mix bloccs.validate networks/hello.bloccs
-mix bloccs.compile  networks/hello.bloccs
-mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
+$ cd examples/tour
+$ mix bloccs.validate networks/pipeline_mismatch.bloccs
+✗ networks/pipeline_mismatch.bloccs
+  - [[edges]] (networks/pipeline_mismatch.bloccs): edge accept.word → define.word
+    schema mismatch: accept.word=WordRequest@1 but define.word=Definition@1
 ```
 
-`mix bloccs.compile` emits real, debuggable `.ex` source under
-`_build/<env>/bloccs_generated/<network>/`. For a step-by-step walkthrough that
-writes a node by hand, see [`guides/getting-started.md`](guides/getting-started.md);
-for the vocabulary (node, port, effect, schema, …) see
-[`guides/concepts.md`](guides/concepts.md).
+The network never starts. Plain Broadway has no contract between pipelines —
+this mismatch would surface as a `FunctionClauseError` (or worse, silently wrong
+data) at 3am.
 
-## What it is
+**2. Undeclared side effects are refused.** A node may only touch the world
+through effects it declared in `[effects]`. `define` declares HTTP to exactly
+one host:
 
-You write your workflow as two kinds of TOML manifests:
+```toml
+[effects]
+http = { allow = ["dictionary.local"], methods = ["GET"] }
+```
 
-- **Node manifests** (`.bloccs`) — one per file. Declares the node's input and
-  output ports with versioned schemas, the effects it's allowed to perform
-  (HTTP / DB / Time / Random), the pure-core and effect-shell function refs, and
-  retry / timeout / idempotency / buffer policy.
-- **Network manifests** — topology: which nodes are wired to which, supervision
+Call anything else and the capability struct refuses it at runtime:
+
+```
+# a host the node didn't allow:
+bloccs effect denied: :http — host of http://evil.example/leak
+                              not in declared allowlist ["dictionary.local"]
+
+# an effect axis the node never declared at all:
+bloccs effect denied: :http — axis not declared
+```
+
+And `use Bloccs.Node` warns you at *compile* time the moment the effect shell
+reaches for an undeclared axis:
+
+```
+warning: bloccs: effect :http used in effect_shell but not declared in
+         [effects]. Declared: [].
+```
+
+Typed edges and capability-scoped effects are the two guarantees that make a
+bloccs graph safer than the same graph hand-wired.
+
+## What you write
+
+Two kinds of TOML manifest:
+
+- **Node manifests** (`.bloccs`, one node per file) — the node's input/output
+  ports with versioned schemas, the effects it's allowed to perform (HTTP / DB /
+  Time / Random), the pure-core and effect-shell function refs, and retry /
+  timeout / idempotency / buffer policy.
+- **Network manifests** — topology: which nodes wire to which, supervision
   structure, concurrency per node, and which ports are exposed.
-
-`mix bloccs.compile` reads these and emits a Broadway-based supervision tree —
-one stage per node, a router for edges, a producer for each inbound port — as
-real `.ex` source under `_build/bloccs_generated/<network>/` (debuggable stack
-traces, PR-reviewable output).
 
 ```toml
 # nodes/enrich.bloccs
@@ -77,15 +119,36 @@ timeout_ms   = 3000
 idempotency  = { key = "id" }
 ```
 
-The node's implementation is split: a **pure core** (no IO, no clock, no
-randomness) and an **effect shell** that touches the world. The shell can only
-use effects declared in `[effects]` — undeclared calls are refused at runtime by
-the capability struct, and `use Bloccs.Node` warns at compile time when the AST
-shows undeclared usage.
+Each node's implementation is split in two: a **pure core** (no IO, no clock, no
+randomness — easy to test, deterministic) and an **effect shell** that touches
+the world, and only through declared effects.
+
+## Quickstart
+
+```bash
+# scaffold a complete, runnable starter project (mix project + a sample node,
+# its schemas, and a one-node network)
+mix bloccs.new my_flow
+cd my_flow
+mix deps.get
+
+# validate, compile to a Broadway supervision tree, then run a message through
+mix bloccs.validate networks/hello.bloccs
+mix bloccs.compile  networks/hello.bloccs
+mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
+```
+
+`mix bloccs.compile` emits real, debuggable `.ex` source under
+`_build/<env>/bloccs_generated/<network>/` — diff it in a PR. For a step-by-step
+walkthrough that writes a node by hand, see
+[`guides/getting-started.md`](guides/getting-started.md); for the vocabulary
+(node, port, effect, schema, …) see [`guides/concepts.md`](guides/concepts.md).
 
 ## What actually runs
 
-Every declared contract is wired into the generated runtime, not just parsed:
+`mix bloccs.compile` reads the manifests and emits a Broadway-based supervision
+tree — one stage per node, a router for edges, a producer for each inbound port.
+Every declared contract is wired into that runtime, not just parsed:
 
 - **Retry** — backed-off re-enqueue (constant / linear / exponential), matched
   against the failure reason; permanent failures (schema mismatch, capability
@@ -157,6 +220,22 @@ work that must survive restarts, put Oban or a broker at the edges. Full
 comparison against Broadway, Oban, Reactor, Temporal, LangGraph, and plain
 GenServers: [`guides/comparison.md`](guides/comparison.md).
 
+## Status
+
+**v0.1 — pre-release.** Not yet on Hex; APIs may change before the first
+release. The compiler core is feature-complete for the v0.1 vision: the full
+**parse → validate → compile → run** loop works, every declared runtime contract
+is honored, the effect adapters are real (behind a config switch), networks
+compose, and structural coverage is real. See
+[`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
+
+> **A note on the name.** In the design docs you'll see bloccs called an *IR for
+> Agentic Computation Graphs (ACGs)* — the north star is typed, supervised graphs
+> with LLM/tool nodes as first-class stages. Today the engine is the
+> general-purpose, agent-agnostic core: typed dataflow on the BEAM. The "agentic"
+> layer is a roadmap direction, not a v0.1 claim — every example here is ordinary
+> backend dataflow.
+
 ## Out of scope for v0.1
 
 Phoenix LiveView canvas (v0.3+) · MCP server (v0.2) · Pro / encrypted packages
@@ -167,3 +246,5 @@ binary · full Dialyzer-level static effect proof · durable persistence.
 ## License
 
 MIT. Pro extensions ship later in a separate private repo (modeled on Oban Pro).
+</content>
+</invoke>

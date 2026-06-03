@@ -1,0 +1,23 @@
+# A DELIBERATELY BROKEN copy of pipeline.bloccs, used by the README's
+# "what it catches before it runs" section. `accept.word` emits WordRequest@1
+# but this `define`'s in-port expects Definition@1 — the edge can't type-check,
+# so `mix bloccs.validate` rejects the network before it ever starts.
+[network]
+id      = "pipeline_mismatch"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+accept = { use = "../nodes/accept.bloccs" }
+define = { use = "../nodes/define_mismatch.bloccs" }
+
+[[edges]]
+from = "accept.word"
+to   = "define.word"
+
+[expose]
+in  = { request    = "accept.request" }
+out = { definition = "define.definition" }
+
+[supervision]
+strategy = "one_for_one"
