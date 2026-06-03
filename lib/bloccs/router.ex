@@ -43,6 +43,13 @@ defmodule Bloccs.Router do
   def dispatch(network_id, from_node, from_port, payload) do
     targets = lookup(network_id, from_node, from_port)
 
+    # Trace/coverage signal: this out-port emitted, and each edge was traversed.
+    :telemetry.execute(
+      [:bloccs, :emit],
+      %{targets: length(targets)},
+      %{network: network_id, from_node: from_node, from_port: from_port, targets: targets}
+    )
+
     Enum.each(targets, fn {to_node, to_port} ->
       producer = producer_name(network_id, to_node, to_port)
       Bloccs.Producer.push(producer, payload)

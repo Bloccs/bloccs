@@ -25,6 +25,14 @@ defmodule Bloccs.Telemetry do
     - measurements: `%{duration, monotonic_time}`
     - metadata: above plus `:kind`, `:reason`, `:stacktrace`
 
+  Routing emits a per-dispatch event (the signal `Bloccs.Trace` records for
+  coverage):
+
+  - `[:bloccs, :emit]` — a node emitted on an out-port
+    - measurements: `%{targets}` (number of downstream edges)
+    - metadata: `%{network, from_node, from_port, targets}` where `targets` is a
+      list of `{to_node, to_port}`
+
   Two additional point-in-time events:
 
   - `[:bloccs, :node, :retry]` — a backed-off retry was scheduled
