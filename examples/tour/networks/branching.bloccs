@@ -1,0 +1,28 @@
+[network]
+id      = "branching"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+classify = { use = "../nodes/classify.bloccs" }
+archive  = { use = "../nodes/archive.bloccs" }
+ack      = { use = "../nodes/ack.bloccs" }
+review   = { use = "../nodes/review.bloccs" }
+
+# An ok message fans out to two sinks.
+[[edges]]
+from = "classify.ok"
+to   = ["archive.item", "ack.item"]
+
+[[edges]]
+from = "classify.flagged"
+to   = "review.item"
+
+[expose]
+in  = { message  = "classify.message" }
+out = { archived = "archive.archived",
+        acked    = "ack.acked",
+        queued   = "review.queued" }
+
+[supervision]
+strategy = "one_for_one"

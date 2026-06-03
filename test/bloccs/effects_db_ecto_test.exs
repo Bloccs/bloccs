@@ -36,7 +36,7 @@ defmodule Bloccs.EffectsDBEctoTest do
   end
 
   defp cap(repo, opts \\ []) do
-    allow = Keyword.get(opts, :allow, ["charges:insert"])
+    allow = Keyword.get(opts, :allow, ["items:insert"])
     Application.put_env(:bloccs, EctoDB, [repo: repo] ++ Keyword.take(opts, [:returning]))
     EctoDB.new(%{allow: allow})
   end
@@ -45,12 +45,12 @@ defmodule Bloccs.EffectsDBEctoTest do
     Application.put_env(:bloccs, :test_repo_pid, self())
     cap = cap(FakeRepo)
 
-    assert {:ok, %{customer_id: "c", stripe_id: "s"}} =
-             EctoDB.insert(cap, :charges, customer_id: "c", stripe_id: "s")
+    assert {:ok, %{name: "c", value: "s"}} =
+             EctoDB.insert(cap, :items, name: "c", value: "s")
 
     # schemaless insert_all gets the table name as a string + a list of one row;
     # with no returning configured, opts carry no :returning
-    assert_receive {:inserted, "charges", [%{customer_id: "c", stripe_id: "s"}], opts}
+    assert_receive {:inserted, "items", [%{name: "c", value: "s"}], opts}
     refute Keyword.has_key?(opts, :returning)
   end
 
@@ -58,10 +58,10 @@ defmodule Bloccs.EffectsDBEctoTest do
     Application.put_env(:bloccs, :test_repo_pid, self())
     cap = cap(FakeRepo, returning: [:id])
 
-    assert {:ok, %{customer_id: "c", id: 99}} =
-             EctoDB.insert(cap, :charges, customer_id: "c")
+    assert {:ok, %{name: "c", id: 99}} =
+             EctoDB.insert(cap, :items, name: "c")
 
-    assert_receive {:inserted, "charges", [%{customer_id: "c"}], [returning: [:id]]}
+    assert_receive {:inserted, "items", [%{name: "c"}], [returning: [:id]]}
   end
 
   test "an out-of-scope table raises Denied" do
@@ -73,10 +73,10 @@ defmodule Bloccs.EffectsDBEctoTest do
   end
 
   test "a missing repo configuration raises a helpful Denied" do
-    cap = EctoDB.new(%{allow: ["charges:insert"]})
+    cap = EctoDB.new(%{allow: ["items:insert"]})
 
     assert_raise Bloccs.Effects.Denied, ~r/no Ecto repo configured/, fn ->
-      EctoDB.insert(cap, :charges, foo: 1)
+      EctoDB.insert(cap, :items, foo: 1)
     end
   end
 
@@ -84,6 +84,6 @@ defmodule Bloccs.EffectsDBEctoTest do
     cap = cap(FailingRepo)
 
     assert {:error, %RuntimeError{message: "db unavailable"}} =
-             EctoDB.insert(cap, :charges, foo: 1)
+             EctoDB.insert(cap, :items, foo: 1)
   end
 end

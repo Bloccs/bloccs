@@ -1,0 +1,20 @@
+[node]
+id      = "ingest"
+version = "0.1.0"
+kind    = "source"
+
+[doc]
+intent = "Accept a raw webhook event and normalize its shape."
+owner  = "@example"
+
+[ports.in]
+received = { schema = "RawEvent@1", buffer = 1000 }
+
+[ports.out]
+event = { schema = "RawEvent@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Events.Nodes.Ingest.transform/2"
+effect_shell = "Events.Nodes.Ingest.execute/2"

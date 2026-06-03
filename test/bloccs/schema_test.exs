@@ -11,11 +11,11 @@ defmodule Bloccs.SchemaTest do
 
   describe "register/2 + lookup/1" do
     test "registers and looks up a schema" do
-      :ok = Schema.register("ChargeRequest@1", customer_id: :string, amount_cents: :integer)
-      assert {:ok, schema} = Schema.lookup("ChargeRequest@1")
-      assert schema.name == "ChargeRequest"
+      :ok = Schema.register("Item@1", name: :string, count: :integer)
+      assert {:ok, schema} = Schema.lookup("Item@1")
+      assert schema.name == "Item"
       assert schema.version == 1
-      assert schema.fields == [customer_id: :string, amount_cents: :integer]
+      assert schema.fields == [name: :string, count: :integer]
     end
 
     test "re-registering with same fields is a no-op" do
@@ -38,7 +38,7 @@ defmodule Bloccs.SchemaTest do
 
   describe "parse_id!/1" do
     test "parses Name@N" do
-      assert {"ChargeRequest", 1} = Schema.parse_id!("ChargeRequest@1")
+      assert {"Item", 1} = Schema.parse_id!("Item@1")
     end
 
     test "rejects malformed ids" do
@@ -50,10 +50,10 @@ defmodule Bloccs.SchemaTest do
 
   describe "validate/2" do
     setup do
-      Schema.register("ChargeRequest@1",
-        customer_id: :string,
-        amount_cents: :integer,
-        currency: :string
+      Schema.register("Item@1",
+        name: :string,
+        count: :integer,
+        label: :string
       )
 
       :ok
@@ -61,37 +61,37 @@ defmodule Bloccs.SchemaTest do
 
     test "passes when payload matches" do
       assert :ok =
-               Schema.validate("ChargeRequest@1", %{
-                 customer_id: "cus_1",
-                 amount_cents: 2500,
-                 currency: "USD"
+               Schema.validate("Item@1", %{
+                 name: "widget",
+                 count: 25,
+                 label: "blue"
                })
     end
 
     test "accepts string keys as well as atom keys" do
       assert :ok =
-               Schema.validate("ChargeRequest@1", %{
-                 "customer_id" => "cus_1",
-                 "amount_cents" => 2500,
-                 "currency" => "USD"
+               Schema.validate("Item@1", %{
+                 "name" => "widget",
+                 "count" => 25,
+                 "label" => "blue"
                })
     end
 
     test "reports missing fields" do
-      assert {:error, errs} = Schema.validate("ChargeRequest@1", %{customer_id: "cus_1"})
-      assert "missing field amount_cents" in errs
-      assert "missing field currency" in errs
+      assert {:error, errs} = Schema.validate("Item@1", %{name: "widget"})
+      assert "missing field count" in errs
+      assert "missing field label" in errs
     end
 
     test "reports type mismatches" do
       assert {:error, errs} =
-               Schema.validate("ChargeRequest@1", %{
-                 customer_id: "cus_1",
-                 amount_cents: "2500",
-                 currency: "USD"
+               Schema.validate("Item@1", %{
+                 name: "widget",
+                 count: "25",
+                 label: "blue"
                })
 
-      assert Enum.any?(errs, &(&1 =~ "amount_cents"))
+      assert Enum.any?(errs, &(&1 =~ "count"))
     end
   end
 

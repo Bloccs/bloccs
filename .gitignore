@@ -26,3 +26,6 @@ doc/
 # Local-only notes / handoffs — NEVER committed (this dir is the public OSS repo
 # source, so anything tracked here ships to github.com/Bloccs/bloccs).
 *.local.md
+
+# Generated trace files from example demos.
+*.bloccs-trace

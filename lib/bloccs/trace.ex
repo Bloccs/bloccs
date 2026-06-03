@@ -16,7 +16,7 @@ defmodule Bloccs.Trace do
 
   ## Recording
 
-      rec = Bloccs.Trace.record(:payments)
+      rec = Bloccs.Trace.record(:events)
       # ... feed messages through the network ...
       events = Bloccs.Trace.stop(rec)
       reached = Bloccs.Trace.reached(events)

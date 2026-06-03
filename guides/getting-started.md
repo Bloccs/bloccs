@@ -191,5 +191,7 @@ run actually reached.
   `Req`/`Ecto`.
 - [Architecture](ARCHITECTURE.md) — how the compile pipeline and runtime are
   built, module by module.
-- `examples/payments` and `examples/real_backend` in the repo — a full mocked
-  network and a real-HTTP-to-SQLite demo (`mix price_watch.demo`).
+- `examples/` in the repo — a graded ladder: [`tour`](../examples/tour)
+  (core concepts, `mix tour.hello`), [`events`](../examples/events) (the flagship
+  webhook processor, `mix events.demo`), and [`real_backend`](../examples/real_backend)
+  (a real-HTTP-to-SQLite demo, `mix price_watch.demo`).

@@ -4,35 +4,35 @@ defmodule Bloccs.ParserTest do
   alias Bloccs.Manifest.{Node, Network, Edge, NetworkNode, Effects, Contract, Doc, Port}
   alias Bloccs.Parser
 
-  @charge_customer ~S"""
+  @enrich ~S"""
   [node]
-  id      = "charge_customer"
+  id      = "enrich"
   version = "1.2.0"
   kind    = "transform"
 
   [doc]
-  intent = "Charge a customer one-time via Stripe and persist the outcome."
-  owner  = "@payments"
+  intent = "Enrich an event from an HTTP lookup and persist the outcome."
+  owner  = "@example"
 
   [ports.in]
-  charge_requested = { schema = "ChargeRequest@1", buffer = 100 }
+  event = { schema = "Event@1", buffer = 100 }
 
   [ports.out]
-  charge_completed = { schema = "ChargeCompleted@1" }
-  charge_failed    = { schema = "ChargeFailed@1" }
+  enriched = { schema = "EnrichedEvent@1" }
+  failed   = { schema = "FailedEvent@1" }
 
   [effects]
-  http   = { allow = ["api.stripe.com"], methods = ["POST"] }
-  db     = { allow = ["charges:insert"] }
+  http   = { allow = ["enrichment.local"], methods = ["GET"] }
+  db     = { allow = ["events:insert"] }
   time   = "wall_clock"
   random = "none"
 
   [contract]
-  pure_core    = "Bloccs.Payments.ChargeCustomer.transform/2"
-  effect_shell = "Bloccs.Payments.ChargeCustomer.execute/2"
-  retry        = { strategy = "exponential", max = 3, on = ["network", "stripe_5xx"] }
+  pure_core    = "Demo.Nodes.Enrich.transform/2"
+  effect_shell = "Demo.Nodes.Enrich.execute/2"
+  retry        = { strategy = "exponential", max = 3, on = ["network", "http_5xx"] }
   timeout_ms   = 5000
-  idempotency  = { key = "fields:customer_id,request_id" }
+  idempotency  = { key = "fields:tenant_id,event_id" }
 
   [observability]
   metrics = ["duration_ms", "outcome"]
@@ -40,47 +40,47 @@ defmodule Bloccs.ParserTest do
   """
 
   describe "parse_node_string/1" do
-    test "parses the charge_customer manifest from research/01" do
-      assert {:ok, %Node{} = node} = Parser.parse_node_string(@charge_customer)
+    test "parses a fully-populated node manifest" do
+      assert {:ok, %Node{} = node} = Parser.parse_node_string(@enrich)
 
-      assert node.id == "charge_customer"
+      assert node.id == "enrich"
       assert node.version == "1.2.0"
       assert node.kind == :transform
 
-      assert %Doc{intent: "Charge a customer" <> _, owner: "@payments"} = node.doc
+      assert %Doc{intent: "Enrich an event" <> _, owner: "@example"} = node.doc
 
       assert %{
-               charge_requested: %Port{
-                 name: :charge_requested,
-                 schema: "ChargeRequest@1",
+               event: %Port{
+                 name: :event,
+                 schema: "Event@1",
                  buffer: 100
                }
              } = node.ports_in
 
       assert Map.keys(node.ports_out) |> Enum.sort() ==
-               [:charge_completed, :charge_failed]
+               [:enriched, :failed]
 
       assert %Effects{
-               http: %{allow: ["api.stripe.com"], methods: ["POST"]},
-               db: %{allow: ["charges:insert"]},
+               http: %{allow: ["enrichment.local"], methods: ["GET"]},
+               db: %{allow: ["events:insert"]},
                time: "wall_clock",
                random: "none"
              } = node.effects
 
       assert %Contract{
                pure_core: %{
-                 module: Bloccs.Payments.ChargeCustomer,
+                 module: Demo.Nodes.Enrich,
                  function: :transform,
                  arity: 2
                },
                effect_shell: %{
-                 module: Bloccs.Payments.ChargeCustomer,
+                 module: Demo.Nodes.Enrich,
                  function: :execute,
                  arity: 2
                },
-               retry: %{strategy: "exponential", max: 3, on: ["network", "stripe_5xx"]},
+               retry: %{strategy: "exponential", max: 3, on: ["network", "http_5xx"]},
                timeout_ms: 5000,
-               idempotency: %{key: "fields:customer_id,request_id"}
+               idempotency: %{key: "fields:tenant_id,event_id"}
              } = node.contract
     end
 
@@ -122,8 +122,8 @@ defmodule Bloccs.ParserTest do
   describe "parse_node/1" do
     @tag :tmp_dir
     test "parses from a file and stores the path", %{tmp_dir: tmp} do
-      path = Path.join(tmp, "charge_customer.bloccs")
-      File.write!(path, @charge_customer)
+      path = Path.join(tmp, "enrich.bloccs")
+      File.write!(path, @enrich)
 
       assert {:ok, node} = Parser.parse_node(path)
       assert node.path == path
@@ -132,31 +132,31 @@ defmodule Bloccs.ParserTest do
 
   describe "parse_network/1" do
     @tag :tmp_dir
-    test "parses a minimal payments network", %{tmp_dir: tmp} do
-      node_path = Path.join(tmp, "charge_customer.bloccs")
-      File.write!(node_path, @charge_customer)
+    test "parses a minimal network", %{tmp_dir: tmp} do
+      node_path = Path.join(tmp, "enrich.bloccs")
+      File.write!(node_path, @enrich)
 
       File.write!(Path.join(tmp, "ingest.bloccs"), node_with_ports("ingest", "http_in", "out_a"))
       File.write!(Path.join(tmp, "log.bloccs"), node_with_ports("log", "in_b", "noop"))
 
-      network_path = Path.join(tmp, "payments.bloccs")
+      network_path = Path.join(tmp, "demo.bloccs")
 
       File.write!(network_path, ~S"""
       [network]
-      id = "payments"
+      id = "demo"
       version = "0.1.0"
 
       [nodes]
       ingest = { use = "ingest.bloccs" }
-      charge = { use = "charge_customer.bloccs" }
+      enrich = { use = "enrich.bloccs" }
       log    = { use = "log.bloccs" }
 
       [[edges]]
       from = "ingest.out_a"
-      to   = "charge.charge_requested"
+      to   = "enrich.event"
 
       [[edges]]
-      from = "charge.charge_completed"
+      from = "enrich.enriched"
       to   = ["log.in_b"]
 
       [supervision]
@@ -166,15 +166,15 @@ defmodule Bloccs.ParserTest do
       """)
 
       assert {:ok, %Network{} = net} = Parser.parse_network(network_path)
-      assert net.id == "payments"
+      assert net.id == "demo"
       assert net.supervision.strategy == :rest_for_one
       assert net.supervision.max_restarts == 5
 
-      assert %{ingest: %NetworkNode{}, charge: %NetworkNode{}, log: %NetworkNode{}} = net.nodes
+      assert %{ingest: %NetworkNode{}, enrich: %NetworkNode{}, log: %NetworkNode{}} = net.nodes
 
       assert [
-               %Edge{from: {:ingest, :out_a}, to: [{:charge, :charge_requested}]},
-               %Edge{from: {:charge, :charge_completed}, to: [{:log, :in_b}]}
+               %Edge{from: {:ingest, :out_a}, to: [{:enrich, :event}]},
+               %Edge{from: {:enrich, :enriched}, to: [{:log, :in_b}]}
              ] = net.edges
     end
 

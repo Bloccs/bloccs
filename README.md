@@ -19,9 +19,11 @@ switch), networks compose, and structural coverage is real. See
 ## Quickstart
 
 ```bash
-# scaffold a starter project (one sample node + a one-node network)
+# scaffold a complete, runnable starter project (mix project + a sample node,
+# its schemas, and a one-node network)
 mix bloccs.new my_flow
 cd my_flow
+mix deps.get
 
 # validate, compile to a Broadway supervision tree, then run a message through
 mix bloccs.validate networks/hello.bloccs
@@ -52,30 +54,27 @@ real `.ex` source under `_build/bloccs_generated/<network>/` (debuggable stack
 traces, PR-reviewable output).
 
 ```toml
-# nodes/charge_customer.bloccs
+# nodes/enrich.bloccs
 [node]
-id = "charge_customer"
-version = "1.2.0"
+id = "enrich"
+version = "0.1.0"
 kind = "transform"
 
 [ports.in]
-charge_requested = { schema = "ChargeRequest@1", buffer = 100 }
+valid = { schema = "RawEvent@1" }
 
 [ports.out]
-charge_completed = { schema = "ChargeCompleted@1" }
-charge_failed    = { schema = "ChargeFailed@1" }
+enriched = { schema = "EnrichedEvent@1" }
 
 [effects]
-http = { allow = ["api.stripe.com"], methods = ["POST"] }
-db   = { allow = ["charges:insert"] }
-time = "wall_clock"
+http = { allow = ["enrichment.local"], methods = ["GET"] }
 
 [contract]
-pure_core    = "Payments.Nodes.ChargeCustomer.transform/2"
-effect_shell = "Payments.Nodes.ChargeCustomer.execute/2"
-retry        = { strategy = "exponential", max = 3, on = ["timeout"], base_ms = 100 }
-timeout_ms   = 5000
-idempotency  = { key = "request_id" }
+pure_core    = "Events.Nodes.Enrich.transform/2"
+effect_shell = "Events.Nodes.Enrich.execute/2"
+retry        = { strategy = "exponential", max = 2, on = ["timeout"], base_ms = 50 }
+timeout_ms   = 3000
+idempotency  = { key = "id" }
 ```
 
 The node's implementation is split: a **pure core** (no IO, no clock, no
@@ -123,6 +122,19 @@ your own backend by implementing the `Bloccs.Effects.HTTP` / `DB` behaviour. See
 [`guides/effect-adapters.md`](guides/effect-adapters.md). A runnable example
 hitting real HTTP + SQLite (zero external services) lives in
 [`examples/real_backend`](examples/real_backend).
+
+## Examples
+
+A graded ladder under [`examples/`](examples) — see [`examples/README.md`](examples/README.md):
+
+- [`examples/tour`](examples/tour) — core concepts one rung at a time
+  (`mix tour.hello` · `mix tour.pipeline` · `mix tour.branching`), mock effects,
+  zero setup.
+- [`examples/events`](examples/events) — the flagship: a webhook/event processor
+  showing typed edges, HTTP + DB effects, retry, timeout, idempotency, branching,
+  fan-out, and coverage (`mix events.demo`).
+- [`examples/real_backend`](examples/real_backend) — the same shape against real
+  HTTP (Req) + SQLite (Ecto) (`mix price_watch.demo`).
 
 ## CLI (Mix tasks)
 

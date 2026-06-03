@@ -1,0 +1,48 @@
+[network]
+id      = "events"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+ingest     = { use = "../nodes/ingest.bloccs" }
+validate   = { use = "../nodes/validate.bloccs" }
+enrich     = { use = "../nodes/enrich.bloccs" }
+route      = { use = "../nodes/route.bloccs" }
+persist    = { use = "../nodes/persist.bloccs" }
+notify     = { use = "../nodes/notify.bloccs" }
+deadletter = { use = "../nodes/deadletter.bloccs" }
+
+[[edges]]
+from = "ingest.event"
+to   = "validate.event"
+
+[[edges]]
+from = "validate.valid"
+to   = "enrich.valid"
+
+[[edges]]
+from = "enrich.enriched"
+to   = "route.enriched"
+
+# Fan-out: a known event is both persisted and notified.
+[[edges]]
+from = "route.known"
+to   = ["persist.event", "notify.event"]
+
+[[edges]]
+from = "route.unknown"
+to   = "deadletter.event"
+
+[expose]
+in  = { webhook = "ingest.received" }
+out = { stored   = "persist.stored",
+        notified = "notify.notified",
+        dead     = "deadletter.recorded" }
+
+[supervision]
+strategy     = "rest_for_one"
+max_restarts = 5
+max_seconds  = 60
+
+[deploy]
+concurrency = { enrich = 4, persist = 1 }

@@ -2,10 +2,10 @@ defmodule Bloccs.Manifest.NetworkNode do
   @moduledoc """
   An instantiated node within a network.
 
-  `local_id` is the symbol used in the network file (e.g. `:charge`); `use_path`
+  `local_id` is the symbol used in the network file (e.g. `:enrich`); `use_path`
   points at the underlying node manifest; `manifest` is the loaded node manifest
   itself; `config` is the per-instance config overlay (used by parameterized
-  nodes like `email_send` with different `template` values).
+  nodes like `notify` with different `template` values).
   """
 
   @type t :: %__MODULE__{

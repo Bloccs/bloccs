@@ -40,7 +40,7 @@ defmodule Bloccs.EffectsConfigTest do
   out_ok = { schema = "Resp@1" }
 
   [effects]
-  http = { allow = ["api.stripe.com"], methods = ["POST"] }
+  http = { allow = ["api.example.com"], methods = ["POST"] }
 
   [contract]
   pure_core = "Bloccs.Stub.transform/2"
@@ -62,7 +62,7 @@ defmodule Bloccs.EffectsConfigTest do
   test "app config overrides the default backend", %{node: node} do
     Application.put_env(:bloccs, :effect_backends, http: FakeHTTP)
     caps = Effects.bind(node)
-    assert %FakeHTTP{declared: %{allow: ["api.stripe.com"]}} = caps.http
+    assert %FakeHTTP{declared: %{allow: ["api.example.com"]}} = caps.http
   end
 
   test "per-call :backends overrides app config", %{node: node} do

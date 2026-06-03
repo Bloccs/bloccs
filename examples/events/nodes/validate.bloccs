@@ -1,0 +1,21 @@
+[node]
+id      = "validate"
+version = "0.1.0"
+kind    = "transform"
+
+[doc]
+intent = "Reject events with an empty payload — a pure rule, no effects."
+owner  = "@example"
+
+[ports.in]
+event = { schema = "RawEvent@1" }
+
+[ports.out]
+valid = { schema = "RawEvent@1" }
+
+# Validation is pure — no external world touched.
+[effects]
+
+[contract]
+pure_core    = "Events.Nodes.Validate.transform/2"
+effect_shell = "Events.Nodes.Validate.execute/2"

@@ -1,0 +1,20 @@
+[node]
+id      = "classify"
+version = "0.1.0"
+kind    = "router"
+
+[doc]
+intent = "Route a message: short ones are ok, long ones are flagged for review."
+
+[ports.in]
+message = { schema = "Message@1" }
+
+[ports.out]
+ok      = { schema = "Message@1" }
+flagged = { schema = "Message@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Classify.transform/2"
+effect_shell = "Tour.Nodes.Classify.execute/2"

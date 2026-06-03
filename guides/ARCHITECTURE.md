@@ -11,7 +11,7 @@ the vocabulary it uses (node, port, effect, schema, …) read
             ┌─────────────────────────────────────────────────────────────┐
             │   .bloccs TOML files  (source of truth)                     │
             │                                                             │
-            │   nodes/charge_customer.bloccs   networks/payments.bloccs   │
+            │   nodes/enrich.bloccs            networks/events.bloccs     │
             └────────────┬──────────────────────────────┬─────────────────┘
                          │                              │
                          ▼                              ▼
@@ -188,7 +188,7 @@ Why source files instead of `Module.create/3` in memory? Three reasons:
 
 The sink subscription model exists for two reasons:
 
-- **Tests.** The integration test in `test/integration/payments_test.exs`
+- **Tests.** The integration test in `test/integration/events_test.exs`
   registers itself as a sink listener on the exposed output ports and asserts
   on the messages it sees.
 - **Trace recording.** `Bloccs.Trace` listens on telemetry spans to record a
@@ -226,17 +226,16 @@ effect."
 ```bash
 cd app/bloccs
 mix check                                     # format + warnings + tests + dialyzer
-mix test test/integration/payments_test.exs   # the headline end-to-end assertion
+mix test test/integration/events_test.exs     # the headline end-to-end assertion
 ```
 
-The integration test parses `examples/payments/networks/payments.bloccs`,
+The integration test parses `examples/events/networks/events.bloccs`,
 validates it, compiles it to source files, starts the generated supervisor,
 registers itself as a sink listener on the three exposed output ports
-(`notify_ok.delivered`, `notify_fail.delivered`, `ledger.committed`), pushes
-a charge request into `ingest.http_request`, and asserts the right messages
-arrive — once for the Stripe-success path (`notify_ok` + `ledger` both fire,
-`notify_fail` doesn't), once for the Stripe-failure path (`notify_fail`
-fires alone).
+(`persist.stored`, `notify.notified`, `deadletter.recorded`), pushes a webhook
+event into `ingest.received`, and asserts the right messages arrive — a known
+event fans out to `persist` + `notify`, an unknown type lands in `deadletter`,
+and a replayed id is deduped by the enrich node's idempotency.
 
 ## Shipped since the initial v0.1 cut
 

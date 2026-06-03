@@ -1,0 +1,19 @@
+[node]
+id      = "archive"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Archive an ok message (a pure sink — emits a receipt)."
+
+[ports.in]
+item = { schema = "Message@1" }
+
+[ports.out]
+archived = { schema = "Receipt@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Archive.transform/2"
+effect_shell = "Tour.Nodes.Archive.execute/2"

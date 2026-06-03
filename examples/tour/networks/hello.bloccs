@@ -1,0 +1,14 @@
+[network]
+id      = "hello"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+greeter = { use = "../nodes/hello.bloccs" }
+
+[expose]
+in  = { entry = "greeter.greeting" }
+out = { exit  = "greeter.reply" }
+
+[supervision]
+strategy = "one_for_one"

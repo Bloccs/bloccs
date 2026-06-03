@@ -1,0 +1,19 @@
+[node]
+id      = "ack"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Acknowledge an ok message (a pure sink — emits a receipt)."
+
+[ports.in]
+item = { schema = "Message@1" }
+
+[ports.out]
+acked = { schema = "Receipt@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Ack.transform/2"
+effect_shell = "Tour.Nodes.Ack.execute/2"
