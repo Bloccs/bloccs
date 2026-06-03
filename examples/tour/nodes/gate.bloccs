@@ -1,0 +1,20 @@
+[node]
+id      = "gate"
+version = "0.1.0"
+kind    = "transform"
+
+[doc]
+intent = "Filter out blank messages (:drop); split the rest to `kept` + `audit`."
+
+[ports.in]
+message = { schema = "Message@1" }
+
+[ports.out]
+kept  = { schema = "Message@1" }
+audit = { schema = "Audit@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Gate.transform/2"
+effect_shell = "Tour.Nodes.Gate.execute/2"

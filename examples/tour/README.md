@@ -1,6 +1,6 @@
 # tour — bloccs core concepts, one rung at a time
 
-A guided, three-rung tour of the core ideas. Every rung is a runnable network
+A guided, four-rung tour of the core ideas. Every rung is a runnable network
 with its own demo task, and the whole thing runs on the built-in **mock** effect
 backends — no external services, no extra dependencies.
 
@@ -10,6 +10,7 @@ mix deps.get
 mix tour.hello       # rung 1
 mix tour.pipeline    # rung 2
 mix tour.branching   # rung 3
+mix tour.filter      # rung 4
 ```
 
 ## Rung 1 — `mix tour.hello`
@@ -66,6 +67,25 @@ message ─▶ [classify] ┤
                    │
                    └──(flagged)──▶ [review] ─▶ queued
 ```
+
+## Rung 4 — `mix tour.filter`
+
+**Filter** and **split**, both in one node. `gate` returns `:drop` for a blank
+message — it's consumed and nothing is emitted (a `[:bloccs, :node, :dropped]`
+event fires). For every other message it emits to **both** out-ports in a single
+invocation, each with a distinct payload — `{:emit, [{:kept, ...}, {:audit,
+...}]}`. So one node both *removes* messages from the flow and *expands* one
+message into several.
+
+```
+                  (blank) ✘ dropped
+message ─▶ [gate] ┤
+          (pure)  ├──kept───▶ [keep_sink]  ─▶ stored
+                  └──audit──▶ [audit_sink] ─▶ audited
+```
+
+Two real messages each produce two receipts (kept + audit); the blank produces
+none.
 
 ## Where next
 

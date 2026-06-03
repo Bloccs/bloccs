@@ -1,0 +1,19 @@
+[node]
+id      = "keep_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Store a kept message (a pure sink — emits a receipt)."
+
+[ports.in]
+item = { schema = "Message@1" }
+
+[ports.out]
+stored = { schema = "Receipt@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.KeepSink.transform/2"
+effect_shell = "Tour.Nodes.KeepSink.execute/2"

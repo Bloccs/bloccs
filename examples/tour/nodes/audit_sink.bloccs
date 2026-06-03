@@ -1,0 +1,19 @@
+[node]
+id      = "audit_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Record an audit entry (a pure sink — emits a receipt)."
+
+[ports.in]
+entry = { schema = "Audit@1" }
+
+[ports.out]
+logged = { schema = "Receipt@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.AuditSink.transform/2"
+effect_shell = "Tour.Nodes.AuditSink.execute/2"

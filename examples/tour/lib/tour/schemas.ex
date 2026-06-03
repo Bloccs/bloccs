@@ -1,5 +1,5 @@
 defmodule Tour.Schemas do
-  @moduledoc "Versioned port schemas for all three tour rungs. Registered on app start."
+  @moduledoc "Versioned port schemas for all four tour rungs. Registered on app start."
 
   alias Bloccs.Schema
 
@@ -15,6 +15,9 @@ defmodule Tour.Schemas do
     # Rung 3 — branching
     Schema.register("Message@1", id: :string, text: :string)
     Schema.register("Receipt@1", id: :string, outcome: :string)
+
+    # Rung 4 — filter + split
+    Schema.register("Audit@1", id: :string, note: :string)
 
     :ok
   end
