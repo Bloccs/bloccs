@@ -13,8 +13,8 @@ to a Broadway supervision tree on the BEAM.
 release. The compiler core is, however, feature-complete for the v0.1 vision:
 the full **parse → validate → compile → run** loop works, every declared
 runtime contract is honored, the effect adapters are real (behind a config
-switch), networks compose, and structural coverage is real. See the honest
-[`docs/v0.1-audit.md`](../../docs/v0.1-audit.md).
+switch), networks compose, and structural coverage is real. See
+[`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
 
 ## What it is
 
@@ -99,7 +99,7 @@ config :bloccs, Bloccs.Effects.DB.Ecto, repo: MyApp.Repo, returning: [:id]
 
 `bloccs` forces neither `req` nor Ecto on you — both are bring-your-own. Write
 your own backend by implementing the `Bloccs.Effects.HTTP` / `DB` behaviour. See
-[`docs/effect-adapters.md`](../../docs/effect-adapters.md). A runnable example
+[`guides/effect-adapters.md`](guides/effect-adapters.md). A runnable example
 hitting real HTTP + SQLite (zero external services) lives in
 [`examples/real_backend`](examples/real_backend).
 
