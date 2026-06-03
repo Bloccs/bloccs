@@ -57,10 +57,14 @@ defmodule Bloccs.Parser do
   paths are resolved relative to the network file's directory.
   """
   @spec parse_network(Path.t()) :: {:ok, Network.t()} | {:error, [Error.t()]}
-  def parse_network(path) do
+  def parse_network(path), do: do_parse_network(path, MapSet.new())
+
+  # `visited` is the set of (expanded) network paths in the current composition
+  # chain, used to detect subgraph cycles.
+  defp do_parse_network(path, visited) do
     with {:ok, text} <- read(path),
          {:ok, map} <- decode(text, path) do
-      cast_network(map, path)
+      cast_network(map, path, MapSet.put(visited, Path.expand(path)))
     end
   end
 
@@ -347,7 +351,7 @@ defmodule Bloccs.Parser do
 
   # ---------- network cast ----------
 
-  defp cast_network(map, path) do
+  defp cast_network(map, path, visited) do
     base_dir = Path.dirname(path)
 
     meta = Map.get(map, "network", %{})
@@ -358,8 +362,14 @@ defmodule Bloccs.Parser do
     sup_raw = Map.get(map, "supervision", %{})
     deploy_raw = Map.get(map, "deploy", %{})
 
-    {nodes, node_errors} = cast_network_nodes(nodes_raw, base_dir, path)
+    # cast_network_nodes flattens any subgraph (`use` -> network) into namespaced
+    # leaf nodes, returning a subgraph index (for edge rewriting) + the subgraphs'
+    # own internal edges.
+    {nodes, subgraph_index, sub_edges, node_errors} =
+      cast_network_nodes(nodes_raw, base_dir, path, visited)
+
     {edges, edge_errors} = cast_edges(edges_raw, path)
+    {rewritten_edges, rewrite_errors} = rewrite_subgraph_edges(edges, subgraph_index, path)
     {expose, expose_errors} = cast_expose(expose_raw, path)
     {sup, sup_errors} = cast_supervision(sup_raw, path)
     deploy = cast_deploy(deploy_raw)
@@ -367,7 +377,7 @@ defmodule Bloccs.Parser do
     meta_errors = check_network_meta(meta, path)
 
     errors =
-      meta_errors ++ node_errors ++ edge_errors ++ expose_errors ++ sup_errors
+      meta_errors ++ node_errors ++ edge_errors ++ rewrite_errors ++ expose_errors ++ sup_errors
 
     if errors == [] do
       {:ok,
@@ -377,7 +387,7 @@ defmodule Bloccs.Parser do
          version: meta["version"],
          runtime: Map.get(meta, "runtime", "beam"),
          nodes: nodes,
-         edges: edges,
+         edges: rewritten_edges ++ sub_edges,
          expose: expose,
          supervision: sup,
          deploy: deploy
@@ -396,69 +406,232 @@ defmodule Bloccs.Parser do
   defp check_network_meta(_, path),
     do: [%Error{file: path, section: "[network]", message: "missing [network] section"}]
 
-  defp cast_network_nodes(map, base_dir, network_path) when is_map(map) do
-    Enum.reduce(map, {%{}, []}, fn {local_name, spec}, {acc, errs} ->
+  # Returns {flat_nodes, subgraph_index, sub_edges, errors}. A subgraph `use`
+  # contributes namespaced leaf nodes (merged into flat_nodes), an entry in the
+  # subgraph_index (exposed-port -> internal endpoint, for edge rewriting), and
+  # its own internal edges (already namespaced) into sub_edges.
+  defp cast_network_nodes(map, base_dir, network_path, visited) when is_map(map) do
+    Enum.reduce(map, {%{}, %{}, [], []}, fn {local_name, spec},
+                                            {nodes, subidx, sub_edges, errs} ->
       local_id = String.to_atom(local_name)
 
-      case cast_one_network_node(local_id, spec, base_dir, network_path) do
-        {:ok, node} ->
-          {Map.put(acc, local_id, node), errs}
+      case cast_one_network_node(local_id, spec, base_dir, network_path, visited) do
+        {:ok, {:leaf, node}} ->
+          {Map.put(nodes, local_id, node), subidx, sub_edges, errs}
+
+        {:ok, {:subgraph, sg}} ->
+          {Map.merge(nodes, sg.nodes), Map.put(subidx, local_id, %{in: sg.in, out: sg.out}),
+           sub_edges ++ sg.edges, errs}
 
         {:error, e} ->
-          {acc, e ++ errs}
+          {nodes, subidx, sub_edges, e ++ errs}
       end
     end)
   end
 
-  defp cast_one_network_node(local_id, %{"use" => use_path} = spec, base_dir, network_path) do
+  defp cast_one_network_node(local_id, %{"use" => use_path} = spec, base_dir, network_path, visited) do
     resolved =
       if Path.type(use_path) == :absolute,
         do: use_path,
         else: Path.expand(use_path, base_dir)
 
-    cond do
-      String.ends_with?(use_path, "/networks") or String.contains?(use_path, "networks/") ->
-        {:error,
-         [
-           %Error{
-             file: network_path,
-             section: "[nodes].#{local_id}",
-             message:
-               "subgraph composition (use = #{inspect(use_path)}) is deferred to v0.2; " <>
-                 "v0.1 only supports node manifests"
-           }
-         ]}
+    config = Map.get(spec, "config", %{})
 
-      true ->
-        case parse_node(resolved) do
-          {:ok, manifest} ->
-            {:ok,
-             %NetworkNode{
-               local_id: local_id,
-               use_path: resolved,
-               manifest: manifest,
-               config: Map.get(spec, "config", %{})
-             }}
+    case classify_manifest(resolved) do
+      {:node, node_map} ->
+        cast_leaf_node(local_id, node_map, resolved, config)
 
-          {:error, errs} ->
+      {:network, net_map} ->
+        cond do
+          map_size(config) > 0 ->
             {:error,
-             Enum.map(errs, fn e ->
-               %{e | section: "[nodes].#{local_id} → #{e.section || ""}"}
-             end)}
+             [
+               err(network_path, "[nodes].#{local_id}",
+                 "config overlay on a subgraph (`use` = network) is not supported")
+             ]}
+
+          MapSet.member?(visited, Path.expand(resolved)) ->
+            {:error,
+             [
+               err(network_path, "[nodes].#{local_id}",
+                 "subgraph composition cycle: #{inspect(resolved)} is already in the chain")
+             ]}
+
+          true ->
+            expand_subgraph(local_id, net_map, resolved, network_path, visited)
+        end
+
+      {:error, errs} ->
+        {:error, prefix_section(errs, "[nodes].#{local_id}")}
+    end
+  end
+
+  defp cast_one_network_node(local_id, _, _, network_path, _visited) do
+    {:error,
+     [err(network_path, "[nodes].#{local_id}", "expected { use = \"path/to/(node|network).bloccs\" }")]}
+  end
+
+  defp cast_leaf_node(local_id, node_map, resolved, config) do
+    case cast_node(node_map, resolved) do
+      {:ok, manifest} ->
+        {:ok,
+         {:leaf, %NetworkNode{local_id: local_id, use_path: resolved, manifest: manifest, config: config}}}
+
+      {:error, errs} ->
+        {:error, prefix_section(errs, "[nodes].#{local_id}")}
+    end
+  end
+
+  # Flatten a sub-network into namespaced leaf nodes + edges, and a resolution
+  # map from the subgraph's exposed ports to its (namespaced) internal endpoints.
+  defp expand_subgraph(local_id, net_map, resolved, network_path, visited) do
+    case cast_network(net_map, resolved, MapSet.put(visited, Path.expand(resolved))) do
+      {:ok, sub} ->
+        case check_expose_targets(sub, network_path, local_id) do
+          [] ->
+            ns_nodes =
+              Map.new(sub.nodes, fn {id, nn} ->
+                nsid = ns_id(local_id, id)
+                {nsid, %{nn | local_id: nsid}}
+              end)
+
+            ns_edges = Enum.map(sub.edges, &namespace_edge(&1, local_id))
+
+            {:ok,
+             {:subgraph,
+              %{
+                nodes: ns_nodes,
+                edges: ns_edges,
+                in: resolve_expose(sub.expose.in, local_id),
+                out: resolve_expose(sub.expose.out, local_id)
+              }}}
+
+          errors ->
+            {:error, errors}
+        end
+
+      {:error, errs} ->
+        {:error, prefix_section(errs, "[nodes].#{local_id}")}
+    end
+  end
+
+  # The subgraph must expose at least one in *and* one out, and every exposed
+  # endpoint must reference a real internal node port.
+  defp check_expose_targets(%Network{} = sub, network_path, local_id) do
+    in_errs = expose_target_errors(sub, sub.expose.in, :ports_in, network_path, local_id, "in")
+    out_errs = expose_target_errors(sub, sub.expose.out, :ports_out, network_path, local_id, "out")
+
+    empties =
+      cond do
+        map_size(sub.expose.in) == 0 ->
+          [err(network_path, "[nodes].#{local_id}", "subgraph exposes no [expose.in] ports")]
+
+        map_size(sub.expose.out) == 0 ->
+          [err(network_path, "[nodes].#{local_id}", "subgraph exposes no [expose.out] ports")]
+
+        true ->
+          []
+      end
+
+    empties ++ in_errs ++ out_errs
+  end
+
+  defp expose_target_errors(sub, expose_map, ports_key, network_path, local_id, dir) do
+    Enum.flat_map(expose_map, fn {exposed, {inner_node, inner_port}} ->
+      node = Map.get(sub.nodes, inner_node)
+
+      cond do
+        is_nil(node) ->
+          [
+            err(network_path, "[nodes].#{local_id}",
+              "exposed #{dir}-port `#{exposed}` targets unknown node `#{inner_node}`")
+          ]
+
+        not Map.has_key?(Map.fetch!(node.manifest, ports_key), inner_port) ->
+          [
+            err(network_path, "[nodes].#{local_id}",
+              "exposed #{dir}-port `#{exposed}` targets `#{inner_node}.#{inner_port}`, " <>
+                "which is not an #{dir}-port of that node")
+          ]
+
+        true ->
+          []
+      end
+    end)
+  end
+
+  defp resolve_expose(expose_map, prefix) do
+    Map.new(expose_map, fn {exposed, {inner_node, inner_port}} ->
+      {exposed, {ns_id(prefix, inner_node), inner_port}}
+    end)
+  end
+
+  defp ns_id(prefix, id), do: String.to_atom("#{prefix}.#{id}")
+
+  defp namespace_edge(%Edge{from: from, to: tos}, prefix) do
+    %Edge{from: ns_endpoint(from, prefix), to: Enum.map(tos, &ns_endpoint(&1, prefix))}
+  end
+
+  defp ns_endpoint({node, port}, prefix), do: {ns_id(prefix, node), port}
+
+  # Rewrite parent edges whose endpoints reference a subgraph's exposed ports to
+  # the subgraph's real (namespaced) internal endpoints. Leaf endpoints pass through.
+  defp rewrite_subgraph_edges(edges, subidx, _path) when map_size(subidx) == 0, do: {edges, []}
+
+  defp rewrite_subgraph_edges(edges, subidx, path) do
+    {rev, errs} =
+      Enum.reduce(edges, {[], []}, fn %Edge{from: from, to: tos}, {acc, errs} ->
+        {new_from, from_errs} = resolve_subgraph_endpoint(from, :out, subidx, path)
+
+        {new_tos, to_errs} =
+          Enum.reduce(tos, {[], []}, fn ep, {tacc, terrs} ->
+            {r, e} = resolve_subgraph_endpoint(ep, :in, subidx, path)
+            {[r | tacc], terrs ++ e}
+          end)
+
+        {[%Edge{from: new_from, to: Enum.reverse(new_tos)} | acc], errs ++ from_errs ++ to_errs}
+      end)
+
+    {Enum.reverse(rev), errs}
+  end
+
+  defp resolve_subgraph_endpoint({node, port} = ep, dir, subidx, path) do
+    case Map.fetch(subidx, node) do
+      :error ->
+        {ep, []}
+
+      {:ok, resolution} ->
+        res_map = if dir == :in, do: resolution.in, else: resolution.out
+
+        case Map.fetch(res_map, port) do
+          {:ok, resolved} ->
+            {resolved, []}
+
+          :error ->
+            {ep,
+             [err(path, "[[edges]]", "subgraph `#{node}` does not expose #{dir}-port `#{port}`")]}
         end
     end
   end
 
-  defp cast_one_network_node(local_id, _, _, network_path) do
-    {:error,
-     [
-       %Error{
-         file: network_path,
-         section: "[nodes].#{local_id}",
-         message: "expected { use = \"path/to/node.bloccs\" }"
-       }
-     ]}
+  # Classify a referenced manifest file as a node or network by its top-level table.
+  defp classify_manifest(path) do
+    with {:ok, text} <- read(path),
+         {:ok, map} <- decode(text, path) do
+      cond do
+        Map.has_key?(map, "network") -> {:network, map}
+        Map.has_key?(map, "node") -> {:node, map}
+        true -> {:error, [%Error{file: path, message: "manifest has neither [node] nor [network]"}]}
+      end
+    end
   end
+
+  defp prefix_section(errs, prefix) do
+    Enum.map(errs, fn e -> %{e | section: "#{prefix} → #{e.section || ""}"} end)
+  end
+
+  defp err(file, section, message),
+    do: %Error{file: file, section: section, message: message}
 
   defp cast_edges(edges, network_path) when is_list(edges) do
     Enum.reduce(edges, {[], []}, fn raw, {acc, errs} ->

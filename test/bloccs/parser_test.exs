@@ -179,22 +179,129 @@ defmodule Bloccs.ParserTest do
     end
 
     @tag :tmp_dir
-    test "subgraph composition is rejected as deferred", %{tmp_dir: tmp} do
+    test "a missing subgraph file surfaces a read error scoped to the node", %{tmp_dir: tmp} do
       File.write!(
-        Path.join(tmp, "payments.bloccs"),
+        Path.join(tmp, "outer.bloccs"),
         ~S"""
         [network]
         id = "outer"
         version = "0.1.0"
 
         [nodes]
-        inner = { use = "networks/inner.bloccs" }
+        inner = { use = "missing.bloccs" }
         """
       )
 
-      assert {:error, errors} = Parser.parse_network(Path.join(tmp, "payments.bloccs"))
-      assert Enum.any?(errors, &(&1.message =~ "deferred to v0.2"))
+      assert {:error, errors} = Parser.parse_network(Path.join(tmp, "outer.bloccs"))
+      assert Enum.any?(errors, &(&1.section =~ "[nodes].inner"))
     end
+  end
+
+  describe "parse_network/1 subgraph composition" do
+    @tag :tmp_dir
+    test "flattens a sub-network into namespaced nodes and rewrites edges", %{tmp_dir: tmp} do
+      write_subgraph_fixtures(tmp)
+
+      assert {:ok, %Network{} = net} = Parser.parse_network(Path.join(tmp, "outer.bloccs"))
+
+      # leaf node `src` plus the subgraph's two leaves, namespaced under `sub`.
+      assert Map.keys(net.nodes) |> Enum.sort() == [:src, :"sub.a", :"sub.b"]
+      assert %NetworkNode{local_id: :"sub.a"} = net.nodes[:"sub.a"]
+
+      # internal sub edge a->b is namespaced; parent edge src->sub.inbound is
+      # rewritten to the exposed internal endpoint (sub.a.in_a); sub.outbound is
+      # exposed from sub.b.out_b.
+      assert {:src, :out_a} in Enum.map(net.edges, & &1.from)
+      assert Enum.any?(net.edges, &(&1.from == {:"sub.a", :out_a} and &1.to == [{:"sub.b", :in_a}]))
+      assert Enum.any?(net.edges, &(&1.to == [{:"sub.a", :in_a}]))
+    end
+
+    @tag :tmp_dir
+    test "errors when a parent edge targets an unexposed subgraph port", %{tmp_dir: tmp} do
+      write_subgraph_fixtures(tmp, parent_to: "sub.nope")
+
+      assert {:error, errors} = Parser.parse_network(Path.join(tmp, "outer.bloccs"))
+      assert Enum.any?(errors, &(&1.message =~ "does not expose"))
+    end
+
+    @tag :tmp_dir
+    test "rejects a composition cycle", %{tmp_dir: tmp} do
+      # a.bloccs uses b.bloccs which uses a.bloccs
+      File.write!(Path.join(tmp, "leaf.bloccs"), node_with_ports("leaf", "in_a", "out_a"))
+
+      cyclic = fn id, other ->
+        ~s"""
+        [network]
+        id = "#{id}"
+        version = "0.1.0"
+
+        [nodes]
+        sub = { use = "#{other}.bloccs" }
+
+        [expose]
+        in  = { i = "sub.i" }
+        out = { o = "sub.o" }
+        """
+      end
+
+      File.write!(Path.join(tmp, "a.bloccs"), cyclic.("a", "b"))
+      File.write!(Path.join(tmp, "b.bloccs"), cyclic.("b", "a"))
+
+      assert {:error, errors} = Parser.parse_network(Path.join(tmp, "a.bloccs"))
+      assert Enum.any?(errors, &(&1.message =~ "cycle"))
+    end
+
+    @tag :tmp_dir
+    test "rejects a config overlay on a subgraph use", %{tmp_dir: tmp} do
+      write_subgraph_fixtures(tmp, parent_config: ~s(, config = { x = 1 }))
+
+      assert {:error, errors} = Parser.parse_network(Path.join(tmp, "outer.bloccs"))
+      assert Enum.any?(errors, &(&1.message =~ "config overlay"))
+    end
+  end
+
+  # outer.bloccs (src -> sub) composing sub.bloccs (a -> b), which exposes
+  # in `inbound` -> a.in_a and out `outbound` -> b.out_b.
+  defp write_subgraph_fixtures(tmp, opts \\ []) do
+    parent_to = Keyword.get(opts, :parent_to, "sub.inbound")
+    parent_config = Keyword.get(opts, :parent_config, "")
+
+    File.write!(Path.join(tmp, "a.bloccs"), node_with_ports("a", "in_a", "out_a"))
+    File.write!(Path.join(tmp, "b.bloccs"), node_with_ports("b", "in_a", "out_b"))
+
+    File.write!(Path.join(tmp, "sub.bloccs"), ~S"""
+    [network]
+    id = "sub"
+    version = "0.1.0"
+
+    [nodes]
+    a = { use = "a.bloccs" }
+    b = { use = "b.bloccs" }
+
+    [[edges]]
+    from = "a.out_a"
+    to   = "b.in_a"
+
+    [expose]
+    in  = { inbound = "a.in_a" }
+    out = { outbound = "b.out_b" }
+    """)
+
+    File.write!(Path.join(tmp, "src.bloccs"), node_with_ports("src", "in_a", "out_a"))
+
+    File.write!(Path.join(tmp, "outer.bloccs"), """
+    [network]
+    id = "outer"
+    version = "0.1.0"
+
+    [nodes]
+    src = { use = "src.bloccs" }
+    sub = { use = "sub.bloccs"#{parent_config} }
+
+    [[edges]]
+    from = "src.out_a"
+    to   = "#{parent_to}"
+    """)
   end
 
   defp node_with_ports(id, in_port, out_port) do
