@@ -144,7 +144,7 @@ walkthrough that writes a node by hand, see
 [`guides/getting-started.md`](guides/getting-started.md); for the vocabulary
 (node, port, effect, schema, …) see [`guides/concepts.md`](guides/concepts.md).
 
-## What runs
+## The generated runtime
 
 `mix bloccs.compile` reads the manifests and emits a Broadway-based supervision
 tree — one stage per node, a router for edges, a producer for each inbound port.
