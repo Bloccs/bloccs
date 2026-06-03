@@ -39,6 +39,19 @@ request ─▶ [accept] ──word──▶ [define] ─▶ definition
            (pure)             (HTTP effect)
 ```
 
+**See it reject a bad graph.** `networks/pipeline_mismatch.bloccs` is the same
+pipeline with one edge deliberately mis-typed (`accept` emits `WordRequest@1`
+into a `define` in-port that expects `Definition@1`). It never compiles:
+
+```sh
+mix bloccs.validate networks/pipeline_mismatch.bloccs
+# ✗ … edge accept.word → define.word schema mismatch:
+#     accept.word=WordRequest@1 but define.word=Definition@1
+```
+
+That's the point of typed edges — the mismatch is caught before the network
+starts, not in production.
+
 ## Rung 3 — `mix tour.branching`
 
 A **router** and **fan-out**. `classify` sends each message out one of two ports
