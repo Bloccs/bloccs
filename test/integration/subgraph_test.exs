@@ -39,7 +39,11 @@ defmodule Bloccs.Integration.SubgraphTest do
     # head.go was rewritten to the subgraph's exposed entry (pipe.up.input);
     # the sub's internal up.mid -> down.mid is namespaced.
     assert Enum.any?(net.edges, &(&1.from == {:head, :go} and &1.to == [{:"pipe.up", :input}]))
-    assert Enum.any?(net.edges, &(&1.from == {:"pipe.up", :mid} and &1.to == [{:"pipe.down", :mid}]))
+
+    assert Enum.any?(
+             net.edges,
+             &(&1.from == {:"pipe.up", :mid} and &1.to == [{:"pipe.down", :mid}])
+           )
   end
 
   test "a message flows through the composed graph to the exposed output" do

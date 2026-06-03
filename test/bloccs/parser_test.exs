@@ -212,7 +212,12 @@ defmodule Bloccs.ParserTest do
       # rewritten to the exposed internal endpoint (sub.a.in_a); sub.outbound is
       # exposed from sub.b.out_b.
       assert {:src, :out_a} in Enum.map(net.edges, & &1.from)
-      assert Enum.any?(net.edges, &(&1.from == {:"sub.a", :out_a} and &1.to == [{:"sub.b", :in_a}]))
+
+      assert Enum.any?(
+               net.edges,
+               &(&1.from == {:"sub.a", :out_a} and &1.to == [{:"sub.b", :in_a}])
+             )
+
       assert Enum.any?(net.edges, &(&1.to == [{:"sub.a", :in_a}]))
     end
 

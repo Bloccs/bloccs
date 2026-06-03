@@ -100,47 +100,24 @@ defmodule Bloccs.Validator do
   surface them — `Bloccs.Node` `__using__/1` emits `IO.warn`; the CLI tasks
   print a yellow block.
 
-  As of v0.2 the node-level runtime fields (`[contract].retry` / `timeout_ms` /
-  `idempotency`, `[ports.in].<port>.buffer`, `[observability]`) are all wired,
-  so node manifests produce no unwired warnings. The only remaining unwired
-  field is network-level `[expose]` — subgraph composition (network-as-node)
-  is still deferred.
+  As of v0.4 + subgraph composition, every parsed manifest field is consumed:
+  the node-level runtime fields (`[contract].retry` / `timeout_ms` /
+  `idempotency`, `[ports.in].<port>.buffer`, `[observability]`) are wired, and
+  `[expose]` now drives subgraph composition and the CLI intake. So this
+  currently returns `[]`. It is kept as the seam for any future
+  parsed-but-unwired field; callers surface whatever it returns.
   """
   @spec warnings(Node.t() | Network.t()) :: [Issue.t()]
   def warnings(%Node{} = node), do: node_warnings(node)
 
   def warnings(%Network{} = network) do
-    node_warnings =
-      Enum.flat_map(network.nodes, fn {local_id, %NetworkNode{manifest: m}} ->
-        Enum.map(node_warnings(m), &prepend_scope(&1, "nodes.#{local_id}"))
-      end)
-
-    node_warnings ++ network_warnings(network)
+    Enum.flat_map(network.nodes, fn {local_id, %NetworkNode{manifest: m}} ->
+      Enum.map(node_warnings(m), &prepend_scope(&1, "nodes.#{local_id}"))
+    end)
   end
 
-  # All node-level runtime fields are wired as of v0.2; nothing to warn about.
+  # All parsed manifest fields are consumed; nothing to warn about today.
   defp node_warnings(%Node{}), do: []
-
-  defp network_warnings(%Network{expose: e, path: path}) do
-    count = map_size(e.in) + map_size(e.out)
-
-    if count > 0 do
-      [
-        %Issue{
-          level: :warning,
-          file: path,
-          scope: "[expose]",
-          message:
-            "declares #{map_size(e.in)} in / #{map_size(e.out)} out exposed ports, " <>
-              "but subgraph composition (network-as-node) is not yet implemented. " <>
-              "These values are stored without being consumed. " <>
-              "See docs/v0.1-audit.md."
-        }
-      ]
-    else
-      []
-    end
-  end
 
   # ---------- node checks ----------
 

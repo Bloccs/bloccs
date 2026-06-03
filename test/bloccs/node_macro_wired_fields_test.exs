@@ -4,10 +4,8 @@ defmodule Bloccs.NodeMacroWiredFieldsTest do
   in v0.1 (retry, timeout_ms, idempotency, ports.in.buffer, [observability])
   are now wired, so a node declaring them must produce NO "parsed-but-unwired"
   warning — neither from `Validator.warnings/1` nor from the `Bloccs.Node`
-  macro's `IO.warn`.
-
-  Network-level `[expose]` is still unwired and is covered in the validator
-  tests.
+  macro's `IO.warn`. (As of subgraph composition, `[expose]` is wired too, so
+  `Validator.warnings/1` returns `[]` across the board.)
   """
 
   use ExUnit.Case, async: false

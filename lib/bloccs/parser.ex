@@ -432,7 +432,13 @@ defmodule Bloccs.Parser do
     end)
   end
 
-  defp cast_one_network_node(local_id, %{"use" => use_path} = spec, base_dir, network_path, visited) do
+  defp cast_one_network_node(
+         local_id,
+         %{"use" => use_path} = spec,
+         base_dir,
+         network_path,
+         visited
+       ) do
     resolved =
       if Path.type(use_path) == :absolute,
         do: use_path,
@@ -449,15 +455,21 @@ defmodule Bloccs.Parser do
           map_size(config) > 0 ->
             {:error,
              [
-               err(network_path, "[nodes].#{local_id}",
-                 "config overlay on a subgraph (`use` = network) is not supported")
+               err(
+                 network_path,
+                 "[nodes].#{local_id}",
+                 "config overlay on a subgraph (`use` = network) is not supported"
+               )
              ]}
 
           MapSet.member?(visited, Path.expand(resolved)) ->
             {:error,
              [
-               err(network_path, "[nodes].#{local_id}",
-                 "subgraph composition cycle: #{inspect(resolved)} is already in the chain")
+               err(
+                 network_path,
+                 "[nodes].#{local_id}",
+                 "subgraph composition cycle: #{inspect(resolved)} is already in the chain"
+               )
              ]}
 
           true ->
@@ -471,14 +483,21 @@ defmodule Bloccs.Parser do
 
   defp cast_one_network_node(local_id, _, _, network_path, _visited) do
     {:error,
-     [err(network_path, "[nodes].#{local_id}", "expected { use = \"path/to/(node|network).bloccs\" }")]}
+     [
+       err(
+         network_path,
+         "[nodes].#{local_id}",
+         "expected { use = \"path/to/(node|network).bloccs\" }"
+       )
+     ]}
   end
 
   defp cast_leaf_node(local_id, node_map, resolved, config) do
     case cast_node(node_map, resolved) do
       {:ok, manifest} ->
         {:ok,
-         {:leaf, %NetworkNode{local_id: local_id, use_path: resolved, manifest: manifest, config: config}}}
+         {:leaf,
+          %NetworkNode{local_id: local_id, use_path: resolved, manifest: manifest, config: config}}}
 
       {:error, errs} ->
         {:error, prefix_section(errs, "[nodes].#{local_id}")}
@@ -522,7 +541,9 @@ defmodule Bloccs.Parser do
   # endpoint must reference a real internal node port.
   defp check_expose_targets(%Network{} = sub, network_path, local_id) do
     in_errs = expose_target_errors(sub, sub.expose.in, :ports_in, network_path, local_id, "in")
-    out_errs = expose_target_errors(sub, sub.expose.out, :ports_out, network_path, local_id, "out")
+
+    out_errs =
+      expose_target_errors(sub, sub.expose.out, :ports_out, network_path, local_id, "out")
 
     empties =
       cond do
@@ -546,15 +567,21 @@ defmodule Bloccs.Parser do
       cond do
         is_nil(node) ->
           [
-            err(network_path, "[nodes].#{local_id}",
-              "exposed #{dir}-port `#{exposed}` targets unknown node `#{inner_node}`")
+            err(
+              network_path,
+              "[nodes].#{local_id}",
+              "exposed #{dir}-port `#{exposed}` targets unknown node `#{inner_node}`"
+            )
           ]
 
         not Map.has_key?(Map.fetch!(node.manifest, ports_key), inner_port) ->
           [
-            err(network_path, "[nodes].#{local_id}",
+            err(
+              network_path,
+              "[nodes].#{local_id}",
               "exposed #{dir}-port `#{exposed}` targets `#{inner_node}.#{inner_port}`, " <>
-                "which is not an #{dir}-port of that node")
+                "which is not an #{dir}-port of that node"
+            )
           ]
 
         true ->
@@ -629,8 +656,7 @@ defmodule Bloccs.Parser do
             {resolved, []}
 
           :error ->
-            {ep,
-             [err(path, section, "subgraph `#{node}` does not expose #{dir}-port `#{port}`")]}
+            {ep, [err(path, section, "subgraph `#{node}` does not expose #{dir}-port `#{port}`")]}
         end
     end
   end
@@ -640,9 +666,14 @@ defmodule Bloccs.Parser do
     with {:ok, text} <- read(path),
          {:ok, map} <- decode(text, path) do
       cond do
-        Map.has_key?(map, "network") -> {:network, map}
-        Map.has_key?(map, "node") -> {:node, map}
-        true -> {:error, [%Error{file: path, message: "manifest has neither [node] nor [network]"}]}
+        Map.has_key?(map, "network") ->
+          {:network, map}
+
+        Map.has_key?(map, "node") ->
+          {:node, map}
+
+        true ->
+          {:error, [%Error{file: path, message: "manifest has neither [node] nor [network]"}]}
       end
     end
   end
