@@ -17,13 +17,19 @@ Broadway pipelines and a supervisor. That works, but nothing checks it:
 - **retry / timeout / idempotency / back-pressure** get re-implemented, slightly
   differently, in every pipeline;
 - the **topology lives in your head** (and a supervisor module), not in a
-  reviewable artifact.
+  reviewable artifact;
+- and once an **LLM is writing the pipelines**, you're auditing sprawling
+  generated glue line by line — the shape of the system buried in code, with a
+  wrong wiring or an unscoped side effect easy to miss in the diff.
 
 bloccs makes the graph a declared, checked thing. You write the topology and the
 per-stage contracts as TOML; bloccs rejects a graph whose edges don't type-match
 *before it runs*, refuses an effect a node didn't declare, and generates the
 Broadway supervision tree — as real, debuggable `.ex` source — with the retry /
-timeout / idempotency / back-pressure already wired in.
+timeout / idempotency / back-pressure already wired in. The artifact you review
+is the manifest, not the generated glue — which is what keeps a human in control
+when an LLM is doing the typing (see [Legible to humans and
+LLMs](#legible-to-humans-and-llms)).
 
 > **Why not just write Elixir, or use Broadway directly?** You can — and for a
 > *single* pipeline you should (see [How it compares](#how-it-compares)). bloccs
