@@ -4,7 +4,7 @@
 stages as TOML; bloccs type-checks the wiring, enforces what each stage is
 allowed to do, and compiles it to a Broadway/GenStage supervision tree.
 
-## The problem it solves
+## Why bloccs?
 
 Plenty of backend work is a *graph of stages*: ingest → validate → enrich →
 branch → persist/notify. On the BEAM you'd build that today by hand-wiring a few
@@ -32,7 +32,7 @@ timeout / idempotency / back-pressure already wired in.
 > rather than maintained by hand. The next section shows the two checks that
 > aren't possible with plain Broadway.
 
-## What it catches before it runs
+## Typed edges and scoped effects
 
 This is the part you can't get from hand-wired Elixir. Both examples below are
 real output from the tour example (`examples/tour`).
@@ -84,7 +84,7 @@ warning: bloccs: effect :http used in effect_shell but not declared in
 Typed edges and capability-scoped effects are the two guarantees that make a
 bloccs graph safer than the same graph hand-wired.
 
-## What you write
+## The manifests
 
 Two kinds of TOML manifest:
 
