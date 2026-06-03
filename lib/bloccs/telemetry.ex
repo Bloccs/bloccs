@@ -41,6 +41,18 @@ defmodule Bloccs.Telemetry do
   - `[:bloccs, :node, :skipped]` — an idempotent duplicate was dropped
     - measurements: `%{}`
     - metadata: base metadata
+  - `[:bloccs, :node, :dispatch_error]` — a node emitted successfully but one or
+    more downstream deliveries failed; the message is failed (not retried, since
+    the effect already ran)
+    - measurements: `%{count}` (number of failed edges)
+    - metadata: base metadata plus `:failures` (a list of `{endpoint, reason}`)
+
+  Routing reports each individual delivery failure too:
+
+  - `[:bloccs, :dispatch, :error]` — a single downstream push failed
+    - measurements: `%{}`
+    - metadata: `%{network, from_node, from_port, to_node, to_port, reason}`
+      where `reason` is `:no_producer` or `{:error, :timeout}`
 
   `:producer` back-pressure is reported separately by `Bloccs.Producer`:
 
@@ -57,6 +69,7 @@ defmodule Bloccs.Telemetry do
     [:bloccs, :node, :exception],
     [:bloccs, :node, :retry],
     [:bloccs, :node, :skipped],
+    [:bloccs, :node, :dispatch_error],
     [:bloccs, :producer, :backpressure]
   ]
 
@@ -105,6 +118,13 @@ defmodule Bloccs.Telemetry do
 
   def handle_event([:bloccs, :node, :skipped], _meas, meta, %{level: level}) do
     Logger.log(level, "bloccs #{meta.network}.#{meta.node} skipped duplicate (idempotent)")
+  end
+
+  def handle_event([:bloccs, :node, :dispatch_error], %{count: count}, meta, _config) do
+    Logger.error(
+      "bloccs #{meta.network}.#{meta.node} failed to deliver #{count} emit(s): " <>
+        inspect(meta.failures)
+    )
   end
 
   def handle_event([:bloccs, :producer, :backpressure], %{size: size}, meta, %{level: level}) do

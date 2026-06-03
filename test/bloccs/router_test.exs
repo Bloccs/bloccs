@@ -51,6 +51,32 @@ defmodule Bloccs.RouterTest do
     assert :ok = Router.dispatch(net, :nowhere, :emitted, %{value: 1})
   end
 
+  test "dispatch returns :ok when every downstream push succeeds", %{net: net} do
+    {:ok, pid} = Producer.start_link(name: Router.producer_name(net, :downstream, :in))
+    :ok = Router.register(net, [{{:upstream, :out}, [{:downstream, :in}]}])
+
+    assert :ok = Router.dispatch(net, :upstream, :out, %{ping: 1})
+    GenStage.stop(pid)
+  end
+
+  test "dispatch reports an undelivered emit instead of dropping it", %{net: net} do
+    # Edge points at a producer that was never started → push returns :no_producer.
+    :ok = Router.register(net, [{{:upstream, :out}, [{:gone, :in}]}])
+
+    :telemetry.attach(
+      "rtr-dispatch-err-#{net}",
+      [:bloccs, :dispatch, :error],
+      fn _event, _meas, meta, %{pid: pid} -> send(pid, {:dispatch_error, meta}) end,
+      %{pid: self()}
+    )
+
+    assert {:error, [{{:gone, :in}, :no_producer}]} =
+             Router.dispatch(net, :upstream, :out, %{ping: 1})
+
+    assert_receive {:dispatch_error, %{to_node: :gone, reason: :no_producer}}, 500
+    :telemetry.detach("rtr-dispatch-err-#{net}")
+  end
+
   test "producer_name and pipeline_name are stable across calls", %{net: net} do
     assert Router.producer_name(net, :n, :p) == Router.producer_name(net, :n, :p)
     assert Router.pipeline_name(net, :n) == Router.pipeline_name(net, :n)

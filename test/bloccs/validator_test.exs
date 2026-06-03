@@ -40,6 +40,32 @@ defmodule Bloccs.ValidatorTest do
       assert {:error, issues} = Validator.validate_node(node)
       assert Enum.any?(issues, &(&1.message =~ "Name@N"))
     end
+
+    test "rejects a node with more than one input port (v0.1 single-input)" do
+      raw = """
+      [node]
+      id = "multi"
+      version = "0.1.0"
+      kind = "transform"
+
+      [ports.in]
+      first  = { schema = "X@1" }
+      second = { schema = "Y@1" }
+
+      [ports.out]
+      o = { schema = "Z@1" }
+
+      [effects]
+
+      [contract]
+      pure_core = "Bloccs.Stub.transform/2"
+      effect_shell = "Bloccs.Stub.execute/2"
+      """
+
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "at most one input port"))
+    end
   end
 
   describe "validate_network/2" do

@@ -211,8 +211,26 @@ defmodule Bloccs.Validator do
         check_one_port(p, "[ports.out]", path, require_schemas?)
       end)
 
-    in_issues ++ out_issues
+    in_issues ++ out_issues ++ check_single_input(i, path)
   end
+
+  # v0.1 compiles one producer per node, so a node is limited to a single input
+  # port. Reject multi-input manifests here with a clear message rather than
+  # letting the compiler crash on the single-port pattern match downstream.
+  defp check_single_input(ports_in, path) when map_size(ports_in) > 1 do
+    names = ports_in |> Map.keys() |> Enum.sort() |> Enum.map_join(", ", &inspect/1)
+
+    [
+      %Issue{
+        file: path,
+        scope: "[ports.in]",
+        message:
+          "a node may declare at most one input port in v0.1 (found #{map_size(ports_in)}: #{names})"
+      }
+    ]
+  end
+
+  defp check_single_input(_ports_in, _path), do: []
 
   defp check_one_port(%Port{schema: schema, name: name}, section, path, require?) do
     cond do

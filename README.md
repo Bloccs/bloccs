@@ -16,6 +16,25 @@ runtime contract is honored, the effect adapters are real (behind a config
 switch), networks compose, and structural coverage is real. See
 [`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
 
+## Quickstart
+
+```bash
+# scaffold a starter project (one sample node + a one-node network)
+mix bloccs.new my_flow
+cd my_flow
+
+# validate, compile to a Broadway supervision tree, then run a message through
+mix bloccs.validate networks/hello.bloccs
+mix bloccs.compile  networks/hello.bloccs
+mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
+```
+
+`mix bloccs.compile` emits real, debuggable `.ex` source under
+`_build/<env>/bloccs_generated/<network>/`. For a step-by-step walkthrough that
+writes a node by hand, see [`guides/getting-started.md`](guides/getting-started.md);
+for the vocabulary (node, port, effect, schema, …) see
+[`guides/concepts.md`](guides/concepts.md).
+
 ## What it is
 
 You write your workflow as two kinds of TOML manifests:
@@ -79,7 +98,9 @@ Every declared contract is wired into the generated runtime, not just parsed:
 - **Back-pressure** — a bounded `buffer` parks the producer's caller until a
   consumer drains, instead of dropping.
 - **Observability** — `:telemetry.span([:bloccs, :node], …)` plus `:emit`,
-  `:retry`, and `:skipped` events (see `Bloccs.Telemetry`).
+  `:retry`, `:skipped`, and `:dispatch_error` events (see `Bloccs.Telemetry`).
+  A failed downstream delivery is surfaced (telemetry + a failed message), never
+  silently dropped.
 - **Subgraph composition** — a `[nodes]` entry may `use` a *network* manifest;
   the parser flattens it into namespaced leaf nodes at parse time.
 
@@ -113,11 +134,23 @@ hitting real HTTP + SQLite (zero external services) lives in
 - `mix bloccs.coverage <network> [--message <json> | --trace <file>]` — real
   structural coverage (every in-port, out-port, and edge) from a recorded run
 
+## How it compares
+
+bloccs **generates** Broadway — it isn't a competitor to it. Reach for Broadway
+directly when you have a single pipeline; reach for bloccs when you have a *graph*
+of typed stages and want the edges (schemas), effects (capabilities), and
+per-node policy (retry / timeout / idempotency / back-pressure) declared and
+checked, with the topology as a reviewable artifact. It is **not** durable — for
+work that must survive restarts, put Oban or a broker at the edges. Full
+comparison against Broadway, Oban, Reactor, Temporal, LangGraph, and plain
+GenServers: [`guides/comparison.md`](guides/comparison.md).
+
 ## Out of scope for v0.1
 
 Phoenix LiveView canvas (v0.3+) · MCP server (v0.2) · Pro / encrypted packages
-(private repo, post-v0.1) · polyglot `pure_core` · cyclic networks (v0.1 is
-DAG-only) · escript-packaged binary · full Dialyzer-level static effect proof.
+(private repo, post-v0.1) · polyglot `pure_core` · multi-input nodes (one input
+port per node in v0.1) · cyclic networks (v0.1 is DAG-only) · escript-packaged
+binary · full Dialyzer-level static effect proof · durable persistence.
 
 ## License
 

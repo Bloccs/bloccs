@@ -75,9 +75,20 @@ defmodule Bloccs.Runtime do
 
     case execute(manifest, data, ctx, manifest.contract.timeout_ms) do
       {:emit, port, payload} ->
-        Router.dispatch(cfg.network_id, cfg.local_id, port, payload)
-        mark_done(dedup)
-        msg
+        # The side effect has already run; dispatch is delivery, not re-execution.
+        # A delivery failure must NOT go through retry (that would re-run the
+        # effect) — mark the work done and fail the message so Broadway surfaces
+        # the undelivered emit instead of silently acking it as success.
+        case Router.dispatch(cfg.network_id, cfg.local_id, port, payload) do
+          :ok ->
+            mark_done(dedup)
+            msg
+
+          {:error, failures} ->
+            mark_done(dedup)
+            emit(:dispatch_error, %{count: length(failures)}, cfg, msg, %{failures: failures})
+            Message.failed(msg, {:dispatch_failed, failures})
+        end
 
       {:error, reason} ->
         fail_or_retry(msg, reason, cfg, dedup)

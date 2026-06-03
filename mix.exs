@@ -82,7 +82,7 @@ defmodule Bloccs.MixProject do
         "GitHub" => @source_url,
         "Website" => "https://bloccs.io"
       },
-      files: ~w(lib mix.exs README.md LICENSE .formatter.exs guides)
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs guides)
     ]
   end
 
@@ -91,7 +91,20 @@ defmodule Bloccs.MixProject do
       main: "readme",
       source_url: @source_url,
       source_ref: "v#{@version}",
-      extras: ["README.md", "guides/ARCHITECTURE.md", "guides/effect-adapters.md", "LICENSE"]
+      extras: [
+        "README.md",
+        "guides/concepts.md",
+        "guides/getting-started.md",
+        "guides/manifest-reference.md",
+        "guides/effect-adapters.md",
+        "guides/comparison.md",
+        "guides/ARCHITECTURE.md",
+        "CHANGELOG.md",
+        "LICENSE"
+      ],
+      groups_for_extras: [
+        Guides: ~r{guides/}
+      ]
     ]
   end
 end

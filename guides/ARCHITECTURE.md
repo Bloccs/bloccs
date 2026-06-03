@@ -1,11 +1,9 @@
-# bloccs v0.1 — architecture
+# Architecture
 
-Last updated: 2026-05-28 (M0–M13 complete)
-
-This document describes how the v0.1 OSS library (`app/bloccs/`) compiles a TOML
-manifest into a running Broadway supervision tree. It's the engineering map of
-the system; see `research/01-revival-thesis-and-node-design.md` for *why* it's
-shaped this way.
+This document describes how the v0.1 OSS library compiles a TOML manifest into a
+running Broadway supervision tree. It's the engineering map of the system; for
+the vocabulary it uses (node, port, effect, schema, …) read
+[Core concepts](concepts.md) first.
 
 ## The compile pipeline at a glance
 
@@ -74,7 +72,8 @@ the debugger — the "legible IR" thesis applies to compilation output too.
 | `Bloccs.Producer` | Push-based GenStage producer; registered in `Bloccs.Registry` under `{network,node,in_port}` | `lib/bloccs/producer.ex` |
 | `Bloccs.Router` | Edge-table dispatch + sink subscriptions for observability/testing | `lib/bloccs/router.ex` |
 | `Bloccs.Compiler.{Node,Network}` | Emit Broadway pipeline + Supervisor source files | `lib/bloccs/compiler/{node,network}.ex` |
-| `Bloccs.Coverage` | Stub: enumerate port + edge obligations, report all unreached. (Trace-driven implementation is v0.4+.) | `lib/bloccs/coverage.ex` |
+| `Bloccs.Coverage` | Structural coverage: enumerate port + edge obligations, report reached vs unreached against a trace | `lib/bloccs/coverage.ex` |
+| `Bloccs.Trace` | Records a run from telemetry into a `.bloccs-trace`; the coverage reached-set is derived from it | `lib/bloccs/trace.ex` |
 | `Mix.Tasks.Bloccs.{New,Validate,Compile,Run,Coverage}` | CLI surface | `lib/mix/tasks/bloccs.*.ex` |
 
 ## The unit: a node
@@ -192,8 +191,8 @@ The sink subscription model exists for two reasons:
 - **Tests.** The integration test in `test/integration/payments_test.exs`
   registers itself as a sink listener on the exposed output ports and asserts
   on the messages it sees.
-- **Forward-compatibility with traces.** When `.bloccs-trace` ships (v0.4+),
-  the trace recorder will be a sink listener attached to every port.
+- **Trace recording.** `Bloccs.Trace` listens on telemetry spans to record a
+  run into a `.bloccs-trace`, which `mix bloccs.coverage` reads back.
 
 ## Producer / Broadway interaction quirk
 
@@ -239,18 +238,24 @@ arrive — once for the Stripe-success path (`notify_ok` + `ledger` both fire,
 `notify_fail` doesn't), once for the Stripe-failure path (`notify_fail`
 fires alone).
 
-## What's deliberately not in v0.1
+## Shipped since the initial v0.1 cut
+
+- **Subgraph composition** — a `[nodes]` entry may `use` a network manifest; the
+  parser flattens it into namespaced leaf nodes.
+- **`.bloccs-trace` recording + real coverage** — `Bloccs.Trace` records a run
+  from telemetry; `mix bloccs.coverage` reports real structural coverage.
+
+## Deliberately not in v0.1
 
 - **Phoenix LiveView canvas** (v0.3+) — the manifest is canonical; the
   canvas is a view.
 - **MCP server** (v0.2) — for agent authoring of `.bloccs` files.
-- **`.bloccs-trace` recording** (v0.4+) — observability artifact that the
-  optimization-camp papers (AFlow, ADAS) can learn from.
 - **Pro / encrypted package distribution** (post-v0.1) — modeled on Oban Pro;
   separate private repo.
 - **Polyglot `pure_core`** (HTTP / WASM sidecar refs) — opens up non-BEAM
   cores for the optimization-camp interop story.
-- **Subgraph composition** (v0.2) — the parser captures `[expose]` already.
+- **Multi-input nodes** — a node is currently limited to a single input port
+  (the compiler emits one producer per node).
 - **Cyclic networks** — v0.1 is DAG-only; cycles unblock the
   self-reflection/iterative-refinement patterns the ACG literature
   catalogues.

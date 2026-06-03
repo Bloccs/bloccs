@@ -5,7 +5,10 @@ defmodule Bloccs.Router do
 
   The edge table is registered per-network via `register/2` at supervisor
   startup. `dispatch/4` looks up the table and pushes each payload into every
-  matching downstream producer via `Bloccs.Producer.push/2`.
+  matching downstream producer via `Bloccs.Producer.push/2`. A push that fails
+  (`:no_producer`, or a `{:error, :timeout}`) emits a `[:bloccs, :dispatch,
+  :error]` telemetry event and is collected into `dispatch/4`'s return value so
+  the caller can act on undelivered emits rather than silently dropping them.
 
   A `:sink` target is a process registered under a `Bloccs.Sink` name; sinks
   are typically test collectors (e.g. `Bloccs.Sink.Collector`) that record
@@ -38,8 +41,14 @@ defmodule Bloccs.Router do
   downstream producer. Also notifies any sink listener subscribed to the
   *source* endpoint — sinks observe what a port emitted, regardless of
   whether downstream edges exist.
+
+  Returns `:ok` when every push succeeded, or `{:error, failures}` where
+  `failures` is a list of `{endpoint, reason}` for the edges whose push did not
+  succeed. Each failure also emits a `[:bloccs, :dispatch, :error]` telemetry
+  event before being collected.
   """
-  @spec dispatch(atom(), atom(), atom(), term()) :: :ok
+  @spec dispatch(atom(), atom(), atom(), term()) ::
+          :ok | {:error, [{endpoint(), :no_producer | {:error, :timeout}}]}
   def dispatch(network_id, from_node, from_port, payload) do
     targets = lookup(network_id, from_node, from_port)
 
@@ -50,17 +59,41 @@ defmodule Bloccs.Router do
       %{network: network_id, from_node: from_node, from_port: from_port, targets: targets}
     )
 
-    Enum.each(targets, fn {to_node, to_port} ->
-      producer = producer_name(network_id, to_node, to_port)
-      Bloccs.Producer.push(producer, payload)
-    end)
+    failures =
+      Enum.reduce(targets, [], fn {to_node, to_port} = target, acc ->
+        producer = producer_name(network_id, to_node, to_port)
+
+        case Bloccs.Producer.push(producer, payload) do
+          :ok ->
+            acc
+
+          reason ->
+            :telemetry.execute(
+              [:bloccs, :dispatch, :error],
+              %{},
+              %{
+                network: network_id,
+                from_node: from_node,
+                from_port: from_port,
+                to_node: to_node,
+                to_port: to_port,
+                reason: reason
+              }
+            )
+
+            [{target, reason} | acc]
+        end
+      end)
 
     case sink_lookup(network_id, from_node, from_port) do
       {:ok, pid} -> send(pid, {:bloccs_sink, network_id, from_node, from_port, payload})
       :error -> :ok
     end
 
-    :ok
+    case failures do
+      [] -> :ok
+      failures -> {:error, Enum.reverse(failures)}
+    end
   end
 
   @doc "Return targets for a given source port; used by tests."
