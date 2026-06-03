@@ -84,6 +84,30 @@ warning: bloccs: effect :http used in effect_shell but not declared in
 Typed edges and capability-scoped effects are the two guarantees that make a
 bloccs graph safer than the same graph hand-wired.
 
+## Legible to humans and LLMs
+
+A bloccs network is a small declarative artifact: the topology is a TOML file,
+and each node is a manifest plus two functions (a pure core and an effect
+shell). The thing you *review* stays small even when an assistant writes most of
+the implementation.
+
+- **You review the graph, not the glue.** A change to the flow is a diff to a
+  `.bloccs` file — which ports moved, which edge appeared — not a re-read of
+  regenerated supervisor and pipeline code. The generated `.ex` is there to
+  inspect when you want it, but the manifest is what you read.
+- **A change's blast radius is one node.** Each node is a bounded unit: a
+  manifest, a `pure_core`, an effect shell. An assistant can add or alter a node
+  without reaching into the rest of the tree.
+- **The boundaries are machine-checked, so you don't have to take the code's
+  word for it.** A mis-wired edge is rejected at validation time; an undeclared
+  host or table is refused. An LLM can move fast and still cannot connect
+  mismatched stages or smuggle in an unscoped side effect — the compiler stops
+  it before it runs.
+
+So you can hand the repetitive parts to an assistant and stay in control of the
+*shape* of the system, instead of drowning in generated code you have to audit
+line by line.
+
 ## The manifests
 
 Two kinds of TOML manifest:
