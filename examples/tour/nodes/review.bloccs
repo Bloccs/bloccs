@@ -1,0 +1,19 @@
+[node]
+id      = "review"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Queue a flagged message for review (a pure sink — emits a receipt)."
+
+[ports.in]
+item = { schema = "Message@1" }
+
+[ports.out]
+queued = { schema = "Receipt@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Review.transform/2"
+effect_shell = "Tour.Nodes.Review.execute/2"

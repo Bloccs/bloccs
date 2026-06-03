@@ -1,0 +1,21 @@
+[node]
+id      = "route"
+version = "0.1.0"
+kind    = "router"
+
+[doc]
+intent = "Branch on event type: known types go downstream, the rest are dead-lettered."
+owner  = "@example"
+
+[ports.in]
+enriched = { schema = "EnrichedEvent@1" }
+
+[ports.out]
+known   = { schema = "EnrichedEvent@1" }
+unknown = { schema = "EnrichedEvent@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Events.Nodes.Route.transform/2"
+effect_shell = "Events.Nodes.Route.execute/2"

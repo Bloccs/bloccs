@@ -1,0 +1,19 @@
+[node]
+id      = "accept"
+version = "0.1.0"
+kind    = "source"
+
+[doc]
+intent = "Accept a word-definition request and normalize it. Pure."
+
+[ports.in]
+request = { schema = "WordRequest@1" }
+
+[ports.out]
+word = { schema = "WordRequest@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Accept.transform/2"
+effect_shell = "Tour.Nodes.Accept.execute/2"

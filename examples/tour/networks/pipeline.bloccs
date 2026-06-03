@@ -1,0 +1,19 @@
+[network]
+id      = "pipeline"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+accept = { use = "../nodes/accept.bloccs" }
+define = { use = "../nodes/define.bloccs" }
+
+[[edges]]
+from = "accept.word"
+to   = "define.word"
+
+[expose]
+in  = { request    = "accept.request" }
+out = { definition = "define.definition" }
+
+[supervision]
+strategy = "one_for_one"

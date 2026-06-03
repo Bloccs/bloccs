@@ -50,9 +50,10 @@ tagged on Hex.
   (`--trace`).
 - **CLI** — `mix bloccs.new`, `mix bloccs.validate`, `mix bloccs.compile`,
   `mix bloccs.run` (with `--message`, `--port`, `--trace`), `mix bloccs.coverage`.
-- **Examples** — `examples/payments` (fully mocked end-to-end network) and
-  `examples/real_backend` (real HTTP to a local stub + real SQLite,
-  `mix price_watch.demo`).
+- **Examples** — a graded ladder: `examples/tour` (core concepts, mock effects),
+  `examples/events` (the flagship webhook processor — branching, fan-out, retry,
+  timeout, idempotency, coverage), and `examples/real_backend` (real HTTP to a
+  local stub + real SQLite, `mix price_watch.demo`).
 - **Guides** — core concepts, getting started, manifest reference, architecture,
   and effect adapters.
 

@@ -20,8 +20,8 @@ Manifests are TOML. For what the words mean, see [Core concepts](concepts.md).
 
 ```toml
 [node]
-id      = "charge_customer"
-version = "1.2.0"
+id      = "enrich"
+version = "0.1.0"
 kind    = "transform"
 ```
 
@@ -45,11 +45,11 @@ A table of named ports. Each value is an inline table:
 
 ```toml
 [ports.in]
-charge_requested = { schema = "ChargeRequest@1", buffer = 100 }
+event = { schema = "RawEvent@1", buffer = 1000 }
 
 [ports.out]
-charge_completed = { schema = "ChargeCompleted@1" }
-charge_failed    = { schema = "ChargeFailed@1" }
+enriched = { schema = "EnrichedEvent@1" }
+failed   = { schema = "FailedEvent@1" }
 ```
 
 > The schema strings must be registered via `Bloccs.Schema.register/2` at app
@@ -69,8 +69,8 @@ An undeclared axis is refused at runtime; a declared one is allowlist-enforced.
 
 ```toml
 [effects]
-http = { allow = ["api.stripe.com"], methods = ["POST"] }
-db   = { allow = ["charges:insert"] }
+http = { allow = ["enrichment.local"], methods = ["GET"] }
+db   = { allow = ["events:insert"] }
 time = "wall_clock"
 ```
 
@@ -98,11 +98,11 @@ regardless of `on`.
 
 ```toml
 [contract]
-pure_core    = "Payments.Nodes.ChargeCustomer.transform/2"
-effect_shell = "Payments.Nodes.ChargeCustomer.execute/2"
-timeout_ms   = 5000
-idempotency  = { key = "request_id" }
-retry        = { strategy = "exponential", max = 3, on = ["timeout"], base_ms = 100 }
+pure_core    = "Events.Nodes.Enrich.transform/2"
+effect_shell = "Events.Nodes.Enrich.execute/2"
+timeout_ms   = 3000
+idempotency  = { key = "id" }
+retry        = { strategy = "exponential", max = 2, on = ["timeout"], base_ms = 50 }
 ```
 
 ### `[observability]` — optional
@@ -144,8 +144,8 @@ which case it is flattened in as a subgraph (namespaced ids like `pipe.up`).
 
 ```toml
 [nodes]
-ingest = { use = "../nodes/http_ingest.bloccs" }
-charge = { use = "../nodes/charge_customer.bloccs" }
+ingest = { use = "../nodes/ingest.bloccs" }
+enrich = { use = "../nodes/enrich.bloccs" }
 ```
 
 ### `[[edges]]` — required
@@ -160,12 +160,12 @@ Endpoints are `"node.port"` strings.
 
 ```toml
 [[edges]]
-from = "ingest.charge_request"
-to   = "charge.charge_requested"
+from = "ingest.event"
+to   = "enrich.event"
 
 [[edges]]
-from = "charge.charge_completed"
-to   = ["notify_ok.notice", "ledger.event"]   # fan-out
+from = "route.known"
+to   = ["persist.event", "notify.event"]   # fan-out
 ```
 
 The validator checks both endpoints exist, schemas match end-to-end, and the
@@ -179,9 +179,9 @@ subgraph). Two tables, `in` and `out`, mapping a public name to an internal
 
 ```toml
 [expose]
-in  = { intake   = "ingest.http_request" }
-out = { sent     = "notify_ok.delivered",
-        recorded = "ledger.committed" }
+in  = { webhook = "ingest.received" }
+out = { stored  = "persist.stored",
+        dead    = "deadletter.recorded" }
 ```
 
 `mix bloccs.run --port <name>` and the default message intake use these names.
@@ -205,6 +205,6 @@ Supervisor config for the generated tree. Defaults: `one_for_one`, 3, 5.
 
 ```toml
 [deploy]
-concurrency = { charge = 2, ledger = 1 }
+concurrency = { enrich = 4, persist = 1 }
 placement   = "default"
 ```

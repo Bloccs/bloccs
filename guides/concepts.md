@@ -53,23 +53,22 @@ Every port references a **schema**.
 ## Schema
 
 A **schema** is a versioned contract for a message's shape, written `Name@N`
-(e.g. `ChargeRequest@1`). The `@N` is a version: a breaking change to the shape
-is a new version (`ChargeRequest@2`), so old and new can coexist on the wire.
+(e.g. `Event@1`). The `@N` is a version: a breaking change to the shape is a new
+version (`Event@2`), so old and new can coexist on the wire.
 
 Schemas are registered at application start with `Bloccs.Schema.register/2`:
 
 ```elixir
-Bloccs.Schema.register("ChargeRequest@1",
-  customer_id: :string,
-  amount_cents: :integer,
-  currency: :string,
-  request_id: :string
+Bloccs.Schema.register("Event@1",
+  id: :string,
+  type: :string,
+  payload: :map
 )
 ```
 
 When two ports are wired by an edge, bloccs checks at validation time that their
-schemas match — you cannot connect a `ChargeRequest@1` out-port to a
-`ChargeCompleted@1` in-port.
+schemas match — you cannot connect an `Event@1` out-port to an
+`EnrichedEvent@1` in-port.
 
 ## Effect
 
@@ -129,8 +128,8 @@ An **edge** wires one out-port to one *or more* in-ports:
 
 ```toml
 [[edges]]
-from = "charge.charge_completed"
-to   = ["notify_ok.notice", "ledger.event"]   # fan-out
+from = "route.known"
+to   = ["persist.event", "notify.event"]   # fan-out
 ```
 
 Endpoints are `node.port`. The validator checks both endpoints exist, the

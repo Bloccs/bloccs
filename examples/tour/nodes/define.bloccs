@@ -1,0 +1,22 @@
+[node]
+id      = "define"
+version = "0.1.0"
+kind    = "transform"
+
+[doc]
+intent = "Look up a word's definition over HTTP. The effect shell touches the world."
+
+[ports.in]
+word = { schema = "WordRequest@1" }
+
+[ports.out]
+definition = { schema = "Definition@1" }
+
+# The node declares exactly which hosts + methods it may use. Calling anything
+# else is refused at runtime (and warned at compile time).
+[effects]
+http = { allow = ["dictionary.local"], methods = ["GET"] }
+
+[contract]
+pure_core    = "Tour.Nodes.Define.transform/2"
+effect_shell = "Tour.Nodes.Define.execute/2"

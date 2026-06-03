@@ -6,25 +6,23 @@ defmodule Bloccs.Schema do
   a deliberately minimal API surface — this is the swap-out point for Protobuf
   or Avro at v0.5+.
 
-  A schema is identified by `"Name@Version"` (e.g. `"ChargeRequest@1"`). Fields
-  are a keyword list of `{name, type}` pairs. Types: `:string`, `:integer`,
-  `:float`, `:boolean`, `:atom`, `:map`, `{:list, type}`, or another schema
-  reference string.
+  A schema is identified by `"Name@Version"` (e.g. `"Event@1"`). Fields are a
+  keyword list of `{name, type}` pairs. Types: `:string`, `:integer`, `:float`,
+  `:boolean`, `:atom`, `:map`, `{:list, type}`, or another schema reference
+  string.
 
   ## Example
 
-      Bloccs.Schema.register("ChargeRequest@1",
-        customer_id: :string,
-        amount_cents: :integer,
-        currency: :string,
-        request_id: :string
+      Bloccs.Schema.register("Event@1",
+        id: :string,
+        type: :string,
+        payload: :map
       )
 
-      Bloccs.Schema.validate("ChargeRequest@1", %{
-        customer_id: "cus_123",
-        amount_cents: 2500,
-        currency: "USD",
-        request_id: "req_1"
+      Bloccs.Schema.validate("Event@1", %{
+        id: "evt_1",
+        type: "order.created",
+        payload: %{"order_id" => 1001}
       })
       #=> :ok
 

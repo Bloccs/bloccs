@@ -7,7 +7,7 @@ defmodule Bloccs.EffectsTest do
 
   @manifest ~S"""
   [node]
-  id = "charge"
+  id = "process"
   version = "0.1.0"
   kind = "transform"
 
@@ -18,8 +18,8 @@ defmodule Bloccs.EffectsTest do
   out_ok = { schema = "Resp@1" }
 
   [effects]
-  http = { allow = ["api.stripe.com"], methods = ["POST"] }
-  db   = { allow = ["charges:insert"] }
+  http = { allow = ["api.example.com"], methods = ["POST"] }
+  db   = { allow = ["items:insert"] }
   time = "wall_clock"
 
   [contract]
@@ -35,14 +35,14 @@ defmodule Bloccs.EffectsTest do
   end
 
   test "allowed HTTP call hits stub", %{node: node} do
-    MockHTTP.stub("POST", "https://api.stripe.com/v1/charges", fn _req ->
-      %{"id" => "ch_1", "status" => "succeeded"}
+    MockHTTP.stub("POST", "https://api.example.com/v1/items", fn _req ->
+      %{"id" => "item_1", "status" => "ok"}
     end)
 
     caps = Effects.bind(node)
 
-    assert {:ok, %{"id" => "ch_1"}} =
-             MockHTTP.post(caps.http, "https://api.stripe.com/v1/charges", %{})
+    assert {:ok, %{"id" => "item_1"}} =
+             MockHTTP.post(caps.http, "https://api.example.com/v1/items", %{})
   end
 
   test "disallowed host is refused", %{node: node} do
@@ -63,8 +63,8 @@ defmodule Bloccs.EffectsTest do
 
   test "DB insert is scoped", %{node: node} do
     caps = Effects.bind(node)
-    assert {:ok, row} = MockDB.insert(caps.db, :charges, customer_id: "c", stripe_id: "s")
-    assert row.customer_id == "c"
+    assert {:ok, row} = MockDB.insert(caps.db, :items, name: "c", value: "s")
+    assert row.name == "c"
 
     assert_raise Bloccs.Effects.Denied, ~r/scope/, fn ->
       MockDB.insert(caps.db, :other_table, foo: 1)

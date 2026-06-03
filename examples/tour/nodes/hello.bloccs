@@ -1,0 +1,19 @@
+[node]
+id      = "hello"
+version = "0.1.0"
+kind    = "transform"
+
+[doc]
+intent = "Greet a name. The smallest possible node: pure, no effects."
+
+[ports.in]
+greeting = { schema = "Name@1" }
+
+[ports.out]
+reply = { schema = "Greeting@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Tour.Nodes.Hello.transform/2"
+effect_shell = "Tour.Nodes.Hello.execute/2"

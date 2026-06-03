@@ -15,11 +15,11 @@ defmodule Bloccs.Node do
 
   ## Example
 
-      defmodule MyApp.Charge do
-        use Bloccs.Node, manifest: "nodes/charge.bloccs"
+      defmodule MyApp.Enrich do
+        use Bloccs.Node, manifest: "nodes/enrich.bloccs"
 
-        def transform(req, ctx), do: ...
-        def execute(intent, ctx), do: ...
+        def transform(event, ctx), do: ...
+        def execute(event, ctx), do: ...
       end
   """
 

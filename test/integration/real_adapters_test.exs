@@ -10,13 +10,10 @@ defmodule Bloccs.Integration.RealAdaptersTest do
 
   use ExUnit.Case, async: false
 
-  alias Bloccs.{Parser, Runtime, Router, Schema}
+  alias Bloccs.{Parser, Router, Runtime, Schema}
   alias Broadway.Message
 
-  @manifest_path Path.join([
-                   Path.expand("../../examples/payments/nodes", __DIR__),
-                   "charge_customer.bloccs"
-                 ])
+  @nodes_dir Path.expand("../../examples/events/nodes", __DIR__)
 
   defmodule StubRepo do
     def insert_all(source, entries, _opts) do
@@ -27,14 +24,16 @@ defmodule Bloccs.Integration.RealAdaptersTest do
 
   setup do
     Schema.clear!()
-    Payments.Schemas.register()
+    Events.Schemas.register()
     Bloccs.Idempotency.reset()
 
-    # Select the REAL adapters via config (this is the production switch).
+    # The real HTTP.Req adapter, but with a fake transport returning a canned
+    # enrichment body — so no socket is opened.
     adapter = fn req ->
-      {req, Req.Response.new(status: 200, body: %{"id" => "ch_live", "status" => "succeeded"})}
+      {req, Req.Response.new(status: 200, body: %{"region" => "us-east"})}
     end
 
+    # Select the REAL adapters via config (this is the production switch).
     Application.put_env(:bloccs, :effect_backends,
       http: Bloccs.Effects.HTTP.Req,
       db: Bloccs.Effects.DB.Ecto
@@ -53,54 +52,62 @@ defmodule Bloccs.Integration.RealAdaptersTest do
       Bloccs.Idempotency.reset()
     end)
 
-    {:ok, manifest} = Parser.parse_node(@manifest_path)
+    Router.register(:real_demo, [])
+    :ok
+  end
 
-    cfg = %Runtime.Config{
+  defp cfg(node_file, local_id, in_port) do
+    {:ok, manifest} = Parser.parse_node(Path.join(@nodes_dir, node_file))
+
+    %Runtime.Config{
       manifest: manifest,
       network_id: :real_demo,
-      local_id: :charge,
-      in_port: :charge_requested
+      local_id: local_id,
+      in_port: in_port
     }
-
-    Router.register(:real_demo, [])
-    Router.register_sink(:real_demo, :charge, :charge_completed, self())
-
-    %{cfg: cfg}
   end
 
   defp msg(data),
     do: %Message{data: data, metadata: %{}, acknowledger: {Bloccs.Producer.Acknowledger, :x, :x}}
 
-  test "charge node runs the real Req + Ecto adapters via config and emits charge_completed",
-       %{cfg: cfg} do
+  test "the enrich node runs the real Req adapter via config and emits enriched" do
+    cfg = cfg("enrich.bloccs", :enrich, :valid)
+    Router.register_sink(:real_demo, :enrich, :enriched, self())
+
+    payload = %{id: "evt-real", type: "order.created", payload: %{"order_id" => 1}}
+
+    result = Runtime.process(msg(payload), cfg)
+    refute match?(%Message{status: {:failed, _}}, result)
+
+    assert_receive {:bloccs_sink, :real_demo, :enrich, :enriched,
+                    %{id: "evt-real", enrichment: %{"region" => "us-east"}}}
+  end
+
+  test "the persist node runs the real Ecto adapter via config and inserts" do
+    cfg = cfg("persist.bloccs", :persist, :event)
+    Router.register_sink(:real_demo, :persist, :stored, self())
+
     payload = %{
-      customer_id: "cus_real",
-      amount_cents: 4200,
-      currency: "USD",
-      request_id: "req_real_1"
+      id: "evt-real",
+      type: "order.created",
+      payload: %{"order_id" => 1},
+      enrichment: %{"region" => "us-east"}
     }
 
     result = Runtime.process(msg(payload), cfg)
     refute match?(%Message{status: {:failed, _}}, result)
 
-    # Real HTTP.Req adapter returned the stubbed Stripe success → emit fired.
-    assert_receive {:bloccs_sink, :real_demo, :charge, :charge_completed,
-                    %{customer_id: "cus_real", stripe_id: "ch_live", amount_cents: 4200}}
-
     # Real DB.Ecto adapter dispatched a schemaless insert_all to the repo.
-    assert_receive {:db_insert, "charges", [%{customer_id: "cus_real", stripe_id: "ch_live"}]}
+    assert_receive {:db_insert, "events", [%{event_id: "evt-real", type: "order.created"}]}
   end
 
-  test "the real HTTP adapter still enforces the declared allowlist", %{cfg: cfg} do
-    # charge_customer declares only api.stripe.com; point the impl elsewhere is
-    # not possible from here, so instead assert a disallowed host is denied at
-    # the adapter level (same Allowlist the live node uses).
-    cap = Bloccs.Effects.HTTP.Req.new(%{allow: ["api.stripe.com"], methods: ["POST"]})
+  test "the real HTTP adapter still enforces the declared allowlist" do
+    # enrich declares only enrichment.local; a disallowed host is denied at the
+    # adapter level (same Allowlist the live node uses).
+    cap = Bloccs.Effects.HTTP.Req.new(%{allow: ["enrichment.local"], methods: ["GET"]})
 
     assert_raise Bloccs.Effects.Denied, ~r/allowlist/, fn ->
-      Bloccs.Effects.HTTP.post(cap, "https://evil.example.com/", %{})
+      Bloccs.Effects.HTTP.get(cap, "https://evil.example.com/")
     end
-
-    _ = cfg
   end
 end

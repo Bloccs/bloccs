@@ -24,8 +24,8 @@ defmodule Bloccs.EffectsFacadeTest do
   out_ok = { schema = "Resp@1" }
 
   [effects]
-  http = { allow = ["api.stripe.com"], methods = ["POST"] }
-  db   = { allow = ["charges:insert"] }
+  http = { allow = ["api.example.com"], methods = ["POST"] }
+  db   = { allow = ["items:insert"] }
   time = "wall_clock"
 
   [contract]
@@ -40,12 +40,12 @@ defmodule Bloccs.EffectsFacadeTest do
   end
 
   test "HTTP facade dispatches to the bound backend", %{caps: caps} do
-    MockHTTP.stub("POST", "https://api.stripe.com/v1/charges", fn _ ->
-      %{"id" => "ch_facade"}
+    MockHTTP.stub("POST", "https://api.example.com/v1/items", fn _ ->
+      %{"id" => "item_facade"}
     end)
 
-    assert {:ok, %{"id" => "ch_facade"}} =
-             HTTP.post(caps.http, "https://api.stripe.com/v1/charges", %{})
+    assert {:ok, %{"id" => "item_facade"}} =
+             HTTP.post(caps.http, "https://api.example.com/v1/items", %{})
   end
 
   test "HTTP facade still enforces the backend's allowlist", %{caps: caps} do
@@ -55,8 +55,8 @@ defmodule Bloccs.EffectsFacadeTest do
   end
 
   test "DB facade dispatches and enforces scope", %{caps: caps} do
-    assert {:ok, row} = DB.insert(caps.db, :charges, customer_id: "c")
-    assert row.customer_id == "c"
+    assert {:ok, row} = DB.insert(caps.db, :items, name: "c")
+    assert row.name == "c"
 
     assert_raise Bloccs.Effects.Denied, ~r/scope/, fn ->
       DB.insert(caps.db, :other, foo: 1)

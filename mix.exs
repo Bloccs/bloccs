@@ -32,8 +32,8 @@ defmodule Bloccs.MixProject do
     ]
   end
 
-  defp elixirc_paths(:test), do: ["lib", "test/support", "examples/payments/lib"]
-  defp elixirc_paths(:dev), do: ["lib", "examples/payments/lib"]
+  defp elixirc_paths(:test), do: ["lib", "test/support", "examples/events/lib"]
+  defp elixirc_paths(:dev), do: ["lib", "examples/events/lib"]
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do

@@ -1,0 +1,21 @@
+[node]
+id      = "persist"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Persist a known event to the events table."
+owner  = "@example"
+
+[ports.in]
+event = { schema = "EnrichedEvent@1" }
+
+[ports.out]
+stored = { schema = "StoredEvent@1" }
+
+[effects]
+db = { allow = ["events:insert"] }
+
+[contract]
+pure_core    = "Events.Nodes.Persist.transform/2"
+effect_shell = "Events.Nodes.Persist.execute/2"

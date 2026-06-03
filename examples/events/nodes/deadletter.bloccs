@@ -1,0 +1,21 @@
+[node]
+id      = "deadletter"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "Record an unknown-type event in the deadletter table."
+owner  = "@example"
+
+[ports.in]
+event = { schema = "EnrichedEvent@1" }
+
+[ports.out]
+recorded = { schema = "StoredEvent@1" }
+
+[effects]
+db = { allow = ["deadletter:insert"] }
+
+[contract]
+pure_core    = "Events.Nodes.Deadletter.transform/2"
+effect_shell = "Events.Nodes.Deadletter.execute/2"
