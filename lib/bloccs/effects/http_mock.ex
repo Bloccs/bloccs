@@ -67,12 +67,19 @@ defmodule Bloccs.Effects.HTTP.Mock do
 
   defp stubs_pid do
     case Process.whereis(__MODULE__) do
-      nil ->
-        {:ok, pid} = Agent.start_link(fn -> %{} end, name: __MODULE__)
-        pid
+      nil -> start_stubs()
+      pid -> pid
+    end
+  end
 
-      pid ->
-        pid
+  # Started UNLINKED so the registry survives the VM, not the first caller. With
+  # `start_link`, the agent would be linked to whatever (test) process first
+  # touched it and die when that process exits — making a later caller race onto
+  # a dead name. `start` (+ already-started handling) avoids that.
+  defp start_stubs do
+    case Agent.start(fn -> %{} end, name: __MODULE__) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
     end
   end
 end
