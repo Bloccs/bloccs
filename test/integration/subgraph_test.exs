@@ -9,7 +9,7 @@ defmodule Bloccs.Integration.SubgraphTest do
 
   use ExUnit.Case, async: false
 
-  alias Bloccs.{Compiler, Parser, Producer, Router, Schema, Validator}
+  alias Bloccs.{Compiler, Coverage, Parser, Producer, Router, Schema, Trace, Validator}
 
   @app_path Path.expand("../fixtures/subgraph/app.bloccs", __DIR__)
 
@@ -54,5 +54,24 @@ defmodule Bloccs.Integration.SubgraphTest do
     :ok = Producer.push(producer, %{"id" => "msg-1"})
 
     assert_receive {:bloccs_sink, :app, :"pipe.down", :output, %{"id" => "msg-1"}}, 2_000
+  end
+
+  test "a recorded run yields real structural coverage across the composed graph", %{
+    network: net
+  } do
+    rec = Trace.record(:app)
+    Router.register_sink(:app, :"pipe.down", :output, self())
+    :ok = Producer.push(Router.producer_name(:app, :head, :start), %{"id" => "cov-1"})
+    assert_receive {:bloccs_sink, :app, :"pipe.down", :output, _}, 2_000
+
+    reached = Trace.reached(Trace.stop(rec))
+    report = Coverage.report(net, reached)
+
+    # The single happy path exercises every port and edge in the flattened graph.
+    assert report.unreached == []
+    assert {:port_in, :head, :start} in report.reached
+    assert {:edge, {:head, :go}, {:"pipe.up", :input}} in report.reached
+    assert {:edge, {:"pipe.up", :mid}, {:"pipe.down", :mid}} in report.reached
+    assert {:port_out, :"pipe.down", :output} in report.reached
   end
 end

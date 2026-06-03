@@ -1,12 +1,13 @@
 defmodule Bloccs.Coverage do
   @moduledoc """
-  v0.1 stub for structural coverage over a parsed network.
+  Structural coverage over a parsed network.
 
   Inspired by Kahani & Bagherzadeh 2026 ("Testing Agentic Workflows with
-  Structural Coverage Criteria", arXiv 2605.26521). v0.1 enumerates the
-  obligations that a `.bloccs-trace` (v0.4+) will eventually satisfy and
-  reports them all as "unreached". When traces land, this module will check
-  each obligation against recorded execution.
+  Structural Coverage Criteria", arXiv 2605.26521). Enumerates the coverage
+  obligations of a network — every in-port, out-port, and edge — and checks
+  them against a *reached* set produced by `Bloccs.Trace` (recorded live from a
+  run, or loaded from a `.bloccs-trace` file). With no reached set it reports a
+  pure structural enumeration (everything unreached).
   """
 
   alias Bloccs.Manifest.{Network, NetworkNode, Edge}
@@ -41,8 +42,8 @@ defmodule Bloccs.Coverage do
   end
 
   @doc """
-  Build a report against a (currently empty for v0.1) set of reached
-  obligations. The full implementation reads a `.bloccs-trace` file in v0.4+.
+  Build a report comparing a network's obligations against a `reached` set
+  (from `Bloccs.Trace`). Defaults to an empty reached set (structural-only).
   """
   @spec report(Network.t(), [obligation()]) :: report()
   def report(%Network{} = network, reached \\ []) do
@@ -64,17 +65,19 @@ defmodule Bloccs.Coverage do
     hit = length(reached)
     percent = if total == 0, do: "—", else: "#{Float.round(hit / total * 100, 1)}%"
 
+    unreached_block =
+      if unreached == [],
+        do: "All obligations reached. ✓",
+        else: "Unreached:\n" <> render_obligation_list(unreached)
+
     """
-    Coverage report for network `#{id}` (v0.1 stub)
+    Coverage report for network `#{id}`
     ------------------------------------------------
     Total obligations: #{total}
     Reached:           #{hit}  (#{percent})
     Unreached:         #{length(unreached)}
 
-    #{render_obligation_list(unreached)}
-
-    Note: v0.1 always reports 0 reached. Trace-based coverage
-    (Bloccs.Trace, v0.4+) will populate the reached set.
+    #{unreached_block}
     """
   end
 

@@ -14,13 +14,13 @@ defmodule Mix.Tasks.Bloccs.Run do
 
   use Mix.Task
 
-  alias Bloccs.{Parser, Validator, Compiler, Router, Producer}
+  alias Bloccs.{Parser, Validator, Compiler, Router, Producer, Trace}
 
   @impl Mix.Task
   def run(args) do
     {opts, rest, _} =
       OptionParser.parse(args,
-        strict: [message: :string, port: :string, wait: :integer]
+        strict: [message: :string, port: :string, wait: :integer, trace: :string]
       )
 
     case rest do
@@ -84,12 +84,19 @@ defmodule Mix.Tasks.Bloccs.Run do
         {:error, _} -> Mix.raise("--message must be valid JSON")
       end
 
+    network_id = String.to_atom(network.id)
     {node, port} = resolve_target_port(network, Keyword.get(opts, :port))
-    producer = Router.producer_name(String.to_atom(network.id), node, port)
-    _ = Producer.push(producer, payload)
 
+    rec = if opts[:trace], do: Trace.record(network_id)
+
+    _ = Producer.push(Router.producer_name(network_id, node, port), payload)
     Mix.shell().info("→ pushed message to #{node}.#{port}")
     Process.sleep(Keyword.get(opts, :wait, 2) * 1000)
+
+    if rec do
+      :ok = Trace.dump(Trace.stop(rec), network_id, opts[:trace])
+      Mix.shell().info([:green, "✓ ", :reset, "wrote trace to #{opts[:trace]}"])
+    end
   end
 
   defp resolve_target_port(network, nil) do

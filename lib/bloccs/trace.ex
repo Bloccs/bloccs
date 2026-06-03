@@ -78,15 +78,18 @@ defmodule Bloccs.Trace do
   end
 
   @doc false
+  # Synchronous (Agent.update) so a recorded event is durable before the
+  # emitting process moves on (e.g. before a downstream/sink send fires) —
+  # deterministic ordering, at the cost of briefly blocking the emitter.
   def handle_event([:bloccs, :node, :start], _meas, meta, %{agent: agent, network: net}) do
     if meta[:network] == net do
-      Agent.cast(agent, &[{:port_in, meta.node, meta.in_port} | &1])
+      Agent.update(agent, &[{:port_in, meta.node, meta.in_port} | &1])
     end
   end
 
   def handle_event([:bloccs, :emit], _meas, meta, %{agent: agent, network: net}) do
     if meta[:network] == net do
-      Agent.cast(agent, &[{:emit, meta.from_node, meta.from_port, meta.targets} | &1])
+      Agent.update(agent, &[{:emit, meta.from_node, meta.from_port, meta.targets} | &1])
     end
   end
 

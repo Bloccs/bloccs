@@ -112,6 +112,25 @@ defmodule Bloccs.CoverageTest do
     rendered = Coverage.render(network, Coverage.report(network))
     assert rendered =~ "covdemo"
     assert rendered =~ "Total obligations:"
-    assert rendered =~ "v0.4+"
+    assert rendered =~ "Unreached:"
+  end
+
+  @tag :tmp_dir
+  test "render shows full coverage when everything is reached", %{tmp_dir: tmp} do
+    File.write!(Path.join(tmp, "a.bloccs"), tmp_node("a", "i", "X@1", "o", "Y@1"))
+
+    File.write!(Path.join(tmp, "n.bloccs"), ~S"""
+    [network]
+    id = "covdemo"
+    version = "0.1.0"
+
+    [nodes]
+    a = { use = "a.bloccs" }
+    """)
+
+    {:ok, network} = Parser.parse_network(Path.join(tmp, "n.bloccs"))
+    report = Coverage.report(network, Coverage.obligations(network))
+    rendered = Coverage.render(network, report)
+    assert rendered =~ "All obligations reached"
   end
 end
