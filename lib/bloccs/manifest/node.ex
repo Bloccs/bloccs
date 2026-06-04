@@ -6,7 +6,7 @@ defmodule Bloccs.Manifest.Node do
   and the (future) canvas renders.
   """
 
-  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch, Join}
+  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch, Join, Rate}
 
   @type kind :: :source | :transform | :router | :sink
 
@@ -22,6 +22,8 @@ defmodule Bloccs.Manifest.Node do
           contract: Contract.t(),
           batch: Batch.t() | nil,
           join: Join.t() | nil,
+          rate: Rate.t() | nil,
+          delay_ms: pos_integer() | nil,
           observability: %{optional(atom()) => term()}
         }
 
@@ -38,6 +40,8 @@ defmodule Bloccs.Manifest.Node do
     :contract,
     :batch,
     :join,
+    :rate,
+    :delay_ms,
     observability: %{}
   ]
 
@@ -183,6 +187,22 @@ defmodule Bloccs.Manifest.Join do
 
   @enforce_keys [:on]
   defstruct [:on, :timeout_ms, :deadletter]
+end
+
+defmodule Bloccs.Manifest.Rate do
+  @moduledoc """
+  Rate-limit (throttle) config from `[rate]`. Caps how fast a node's producer
+  delivers messages downstream — `allowed` messages per `interval_ms` — using
+  Broadway's built-in producer `rate_limiting`.
+  """
+
+  @type t :: %__MODULE__{
+          allowed: pos_integer(),
+          interval_ms: pos_integer()
+        }
+
+  @enforce_keys [:allowed, :interval_ms]
+  defstruct [:allowed, :interval_ms]
 end
 
 defmodule Bloccs.Manifest.Contract do

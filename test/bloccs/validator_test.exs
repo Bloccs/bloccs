@@ -182,6 +182,35 @@ defmodule Bloccs.ValidatorTest do
     end
   end
 
+  describe "validate_node/2 [rate] / [delay]" do
+    test "accepts [rate] and [delay] on a plain node" do
+      raw = batch_node("[rate]\nallowed = 10\ninterval_ms = 1000\n\n[delay]\nms = 50")
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert :ok = Validator.validate_node(node)
+    end
+
+    test "rejects a non-positive [rate].allowed" do
+      raw = batch_node("[rate]\nallowed = 0\ninterval_ms = 1000")
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "positive integer"))
+    end
+
+    test "rejects a non-positive [delay].ms" do
+      raw = batch_node("[delay]\nms = 0")
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "positive integer"))
+    end
+
+    test "rejects [rate] on a [join] node" do
+      raw = join_node(~s([join]\non = "id"\n\n[rate]\nallowed = 1\ninterval_ms = 1000))
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "not supported on a [join]"))
+    end
+  end
+
   describe "validate_network/2" do
     @tag :tmp_dir
     test "accepts a well-formed two-node DAG", %{tmp_dir: tmp} do

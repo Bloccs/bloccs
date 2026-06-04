@@ -130,6 +130,11 @@ declared `deadletter` out-port. This is the only case where a node may declare
 more than one in-port — fan-*in* to a single port (an undifferentiated *merge*)
 needs no special block.
 
+**Timing.** A `[rate]` block throttles a node (Broadway rate limiting); a
+`[delay]` block holds each message for a fixed time before it enters the node.
+*Debounce* — collapse a burst and keep the last — is a time-windowed `[batch]`
+rather than its own block.
+
 ## Network
 
 A **network** composes nodes into a graph. Its manifest declares:

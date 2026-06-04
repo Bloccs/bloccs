@@ -90,6 +90,8 @@ defmodule Bloccs.Producer do
        name: name,
        # nil = unbounded (the [ports.in].<port>.buffer manifest field)
        buffer: Keyword.get(opts, :buffer),
+       # nil = no delay; otherwise hold each push this many ms (the [delay] field)
+       delay: Keyword.get(opts, :delay),
        size: 0,
        # callers parked waiting for buffer space: {from, payload, meta}
        blocked: :queue.new()
@@ -100,6 +102,17 @@ defmodule Bloccs.Producer do
   def handle_demand(incoming_demand, state) do
     {events, state} = drain(%{state | pending_demand: state.pending_demand + incoming_demand}, [])
     {:noreply, events, state}
+  end
+
+  @impl GenStage
+  def handle_call({:push, payload, meta}, _from, %{delay: delay} = state)
+      when is_integer(delay) and delay > 0 do
+    # A delay node time-shifts each message: ack the push immediately and enqueue
+    # it after `delay` via the existing timer path (which also respects the
+    # buffer). The caller is not parked — delay shifts in time, it doesn't
+    # back-pressure.
+    Process.send_after(self(), {:enqueue, payload, meta}, delay)
+    {:reply, :ok, [], state}
   end
 
   @impl GenStage

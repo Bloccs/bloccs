@@ -19,6 +19,7 @@ defmodule Bloccs.Parser do
     Contract,
     Batch,
     Join,
+    Rate,
     Doc,
     Port
   }
@@ -119,6 +120,8 @@ defmodule Bloccs.Parser do
         {:contract, "[contract]", &cast_contract/1},
         {:batch, "[batch]", &cast_batch/1, true},
         {:join, "[join]", &cast_join/1, true},
+        {:rate, "[rate]", &cast_rate/1, true},
+        {:delay_ms, "[delay]", &cast_delay/1, true},
         {:observability, "[observability]", &cast_observability/1, true}
       ])
 
@@ -137,6 +140,8 @@ defmodule Bloccs.Parser do
         contract: fields[:contract],
         batch: fields[:batch],
         join: fields[:join],
+        rate: fields[:rate],
+        delay_ms: fields[:delay_ms],
         observability: fields[:observability] || %{}
       }
 
@@ -203,6 +208,8 @@ defmodule Bloccs.Parser do
   defp fetch_raw(map, :contract), do: Map.get(map, "contract", :missing)
   defp fetch_raw(map, :batch), do: Map.get(map, "batch", :missing)
   defp fetch_raw(map, :join), do: Map.get(map, "join", :missing)
+  defp fetch_raw(map, :rate), do: Map.get(map, "rate", :missing)
+  defp fetch_raw(map, :delay_ms), do: Map.get(map, "delay", :missing)
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
 
   defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k}) do
@@ -320,6 +327,20 @@ defmodule Bloccs.Parser do
     do: {:error, [%Error{message: "missing required key `on` (correlation field)"}]}
 
   defp cast_join(_), do: {:error, [%Error{message: "expected a table"}]}
+
+  defp cast_rate(map) when is_map(map) do
+    {:ok, %Rate{allowed: Map.get(map, "allowed"), interval_ms: Map.get(map, "interval_ms")}}
+  end
+
+  defp cast_rate(_), do: {:error, [%Error{message: "expected a table"}]}
+
+  # `[delay]` is a table with a single `ms` key; we store the integer directly.
+  defp cast_delay(%{"ms" => ms}), do: {:ok, ms}
+
+  defp cast_delay(map) when is_map(map),
+    do: {:error, [%Error{message: "missing required key `ms`"}]}
+
+  defp cast_delay(_), do: {:error, [%Error{message: "expected a table"}]}
 
   defp cast_mfa(nil, _), do: {:error, [%Error{message: "missing pure_core or effect_shell"}]}
 
