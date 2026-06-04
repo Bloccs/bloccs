@@ -1,0 +1,24 @@
+[network]
+id      = "merge"
+version = "0.1.0"
+
+[nodes]
+left    = { use = "left.bloccs" }
+right   = { use = "right.bloccs" }
+collect = { use = "collect.bloccs" }
+
+# Fan-in: two distinct out-ports both edge into collect's single in-port.
+[[edges]]
+from = "left.out"
+to   = "collect.acc"
+
+[[edges]]
+from = "right.out"
+to   = "collect.acc"
+
+[expose]
+in  = { left_in = "left.req", right_in = "right.req" }
+out = { merged = "collect.done" }
+
+[supervision]
+strategy = "one_for_one"

@@ -166,10 +166,18 @@ to   = "enrich.event"
 [[edges]]
 from = "route.known"
 to   = ["persist.event", "notify.event"]   # fan-out
+
+[[edges]]
+from = "left.out"
+to   = "collect.in"
+[[edges]]
+from = "right.out"
+to   = "collect.in"                          # fan-in (merge): both feed collect.in
 ```
 
 The validator checks both endpoints exist, schemas match end-to-end, and the
-graph is acyclic.
+graph is acyclic. Several edges may target one in-port (fan-in / merge) — that
+port's producer receives all of them, interleaved and unordered.
 
 ### `[expose]` — optional
 
