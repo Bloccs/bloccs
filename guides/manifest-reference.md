@@ -105,6 +105,31 @@ idempotency  = { key = "id" }
 retry        = { strategy = "exponential", max = 2, on = ["timeout"], base_ms = 50 }
 ```
 
+### `[batch]` — optional
+
+Present only on **aggregate** nodes. When set, the node processes messages in
+batches via Broadway batchers instead of one at a time: its `pure_core` receives
+the **list** of payloads in the batch (not a single payload) and reduces them,
+and its `effect_shell` emits the aggregate result (one emit, a split, or a drop —
+like any node). The batch flushes when it reaches `size` messages or after
+`timeout_ms` of idle, whichever is first, so a partial batch is never stranded.
+
+| key | type | default | meaning |
+|---|---|---|---|
+| `size` | positive integer | 100 | count window — flush after this many messages |
+| `timeout_ms` | positive integer | 1000 | time window — flush a partial batch after this idle period |
+
+At least one of `size` / `timeout_ms` must be set. A `[batch]` node may **not**
+also declare `[contract].retry`, `idempotency`, or `timeout_ms` — the batch path
+is at-least-once and does not run those per-message policies yet (the validator
+rejects the combination).
+
+```toml
+[batch]
+size       = 100
+timeout_ms = 5000
+```
+
 ### `[observability]` — optional
 
 A free-form table captured onto the node (`metrics`, `traces`, …); telemetry is

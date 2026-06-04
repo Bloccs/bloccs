@@ -1,0 +1,18 @@
+[network]
+id      = "aggregate"
+version = "0.1.0"
+
+[nodes]
+rollup  = { use = "rollup.bloccs" }
+collect = { use = "collect.bloccs" }
+
+[[edges]]
+from = "rollup.summary"
+to   = "collect.summary"
+
+[expose]
+in  = { events = "rollup.events" }
+out = { summaries = "collect.done" }
+
+[supervision]
+strategy = "one_for_one"

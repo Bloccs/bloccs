@@ -68,6 +68,60 @@ defmodule Bloccs.ValidatorTest do
     end
   end
 
+  describe "validate_node/2 [batch]" do
+    defp batch_node(batch_block, extra_contract \\ "") do
+      """
+      [node]
+      id = "agg"
+      version = "0.1.0"
+      kind = "transform"
+
+      [ports.in]
+      i = { schema = "X@1" }
+
+      [ports.out]
+      o = { schema = "Y@1" }
+
+      [effects]
+
+      #{batch_block}
+
+      [contract]
+      pure_core = "Bloccs.Stub.transform/2"
+      effect_shell = "Bloccs.Stub.execute/2"
+      #{extra_contract}
+      """
+    end
+
+    test "accepts a well-formed [batch] node" do
+      assert {:ok, node} =
+               Parser.parse_node_string(batch_node("[batch]\nsize = 100\ntimeout_ms = 500"))
+
+      assert :ok = Validator.validate_node(node)
+    end
+
+    test "rejects an empty [batch] (neither size nor timeout_ms)" do
+      assert {:ok, node} = Parser.parse_node_string(batch_node("[batch]"))
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "at least one of"))
+    end
+
+    test "rejects a non-positive size" do
+      assert {:ok, node} = Parser.parse_node_string(batch_node("[batch]\nsize = 0"))
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "positive integer"))
+    end
+
+    test "rejects combining [batch] with [contract].retry (unsupported)" do
+      raw =
+        batch_node("[batch]\nsize = 10", ~s(retry = { strategy = "constant", max = 2, on = [] }))
+
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "cannot also declare [contract].retry"))
+    end
+  end
+
   describe "validate_network/2" do
     @tag :tmp_dir
     test "accepts a well-formed two-node DAG", %{tmp_dir: tmp} do
