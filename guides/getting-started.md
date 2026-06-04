@@ -191,7 +191,7 @@ run actually reached.
   `Req`/`Ecto`.
 - [Architecture](ARCHITECTURE.md) — how the compile pipeline and runtime are
   built, module by module.
-- `examples/` in the repo — a graded ladder: [`tour`](../examples/tour)
-  (core concepts, `mix tour.hello`), [`events`](../examples/events) (the flagship
-  webhook processor, `mix events.demo`), and [`real_backend`](../examples/real_backend)
+- `examples/` in the repo — a graded ladder: [`tour`](https://github.com/Bloccs/bloccs/tree/main/examples/tour)
+  (core concepts, `mix tour.hello`), [`events`](https://github.com/Bloccs/bloccs/tree/main/examples/events) (the flagship
+  webhook processor, the `events.demo` task), and [`real_backend`](https://github.com/Bloccs/bloccs/tree/main/examples/real_backend)
   (a real-HTTP-to-SQLite demo, `mix price_watch.demo`).

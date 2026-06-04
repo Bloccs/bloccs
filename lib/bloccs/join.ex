@@ -37,7 +37,7 @@ defmodule Bloccs.Join do
           deadletter: atom() | nil
         }
 
-  @doc "Start the buffer. Started by `Bloccs.Application`."
+  @doc "Start the buffer (started under the bloccs application supervisor)."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 

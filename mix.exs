@@ -89,9 +89,17 @@ defmodule Bloccs.MixProject do
   defp docs do
     [
       main: "readme",
+      logo: "assets/bloccs-mark.png",
       source_url: @source_url,
       source_ref: "v#{@version}",
       assets: %{"assets" => "assets"},
+      # Document only the library's own modules. Examples (`examples/*/lib`) are
+      # compiled in dev/test via elixirc_paths but are NOT in the Hex package, so
+      # this keeps local `mix docs` equivalent to the published docs.
+      filter_modules: fn mod, _meta ->
+        name = inspect(mod)
+        String.starts_with?(name, "Bloccs") or String.starts_with?(name, "Mix.Tasks.Bloccs")
+      end,
       extras: [
         {"README.md", [title: "bloccs"]},
         "guides/concepts.md",
@@ -105,6 +113,25 @@ defmodule Bloccs.MixProject do
       ],
       groups_for_extras: [
         Guides: ~r{guides/}
+      ],
+      nest_modules_by_prefix: [Bloccs.Effects, Bloccs.Manifest, Bloccs.Compiler],
+      groups_for_modules: [
+        "Manifests & parsing": [Bloccs.Parser, Bloccs.Schema, ~r/^Bloccs\.Manifest/],
+        Validation: [Bloccs.Validator, Bloccs.Node],
+        Compilation: [~r/^Bloccs\.Compiler/],
+        Runtime: [
+          Bloccs.Runtime,
+          Bloccs.Router,
+          Bloccs.Producer,
+          Bloccs.Join,
+          Bloccs.Retry,
+          Bloccs.Idempotency,
+          Bloccs.Context,
+          Bloccs.Pipeline
+        ],
+        Effects: [~r/^Bloccs\.Effects/],
+        Observability: [Bloccs.Telemetry, Bloccs.Trace, Bloccs.Coverage],
+        "Mix tasks": [~r/^Mix\.Tasks\.Bloccs/]
       ]
     ]
   end

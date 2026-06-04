@@ -26,7 +26,7 @@ defmodule Bloccs.Idempotency do
 
   @type scope :: {atom(), atom()}
 
-  @doc "Start the tracker. Started by `Bloccs.Application`."
+  @doc "Start the tracker (started under the bloccs application supervisor)."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
