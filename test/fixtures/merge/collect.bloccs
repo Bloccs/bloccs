@@ -1,0 +1,16 @@
+[node]
+id      = "merge_collect"
+version = "0.1.0"
+kind    = "sink"
+
+[ports.in]
+acc = { schema = "Msg@1" }
+
+[ports.out]
+done = { schema = "Msg@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.MergeFixtures.Collect.transform/2"
+effect_shell = "Bloccs.Integration.MergeFixtures.Collect.execute/2"

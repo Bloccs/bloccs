@@ -136,6 +136,26 @@ Endpoints are `node.port`. The validator checks both endpoints exist, the
 schemas match end-to-end, and the resulting graph is **acyclic** (v0.1 is
 DAG-only).
 
+**Fan-in (merge).** The dual of fan-out works too: several out-ports may target
+the *same* in-port, and that port's single producer receives all of them — N
+sources merged into one stream. There's no special construct; just point several
+edges at one `node.port` (they must all carry that port's schema). Delivery from
+the different sources is interleaved and **unordered**.
+
+```toml
+[[edges]]
+from = "left.out"
+to   = "collect.in"
+
+[[edges]]
+from = "right.out"
+to   = "collect.in"   # merge: both sources feed collect.in
+```
+
+Note the limit this does *not* lift: a node still has at most one **in-port** in
+v0.1, so this is an undifferentiated merge (one stream), not a *join* that
+correlates two distinct typed inputs — that needs multi-input nodes (roadmap).
+
 ## Subgraph
 
 A network can be reused as a node inside a bigger network: a `[nodes]` entry may

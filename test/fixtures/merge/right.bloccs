@@ -1,0 +1,16 @@
+[node]
+id      = "merge_right"
+version = "0.1.0"
+kind    = "source"
+
+[ports.in]
+req = { schema = "Msg@1" }
+
+[ports.out]
+out = { schema = "Msg@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.MergeFixtures.Right.transform/2"
+effect_shell = "Bloccs.Integration.MergeFixtures.Right.execute/2"
