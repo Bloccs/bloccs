@@ -1,0 +1,20 @@
+[node]
+id      = "rollup"
+version = "0.1.0"
+kind    = "transform"
+
+[ports.in]
+events = { schema = "Event@1" }
+
+[ports.out]
+summary = { schema = "Summary@1" }
+
+[effects]
+
+[batch]
+size       = 3
+timeout_ms = 200
+
+[contract]
+pure_core    = "Bloccs.Integration.AggregateFixtures.Rollup.transform/2"
+effect_shell = "Bloccs.Integration.AggregateFixtures.Rollup.execute/2"

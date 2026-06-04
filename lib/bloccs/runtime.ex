@@ -64,6 +64,78 @@ defmodule Bloccs.Runtime do
     end)
   end
 
+  @doc """
+  Prepare one message for an aggregate (batch) node: validate it against the
+  in-port schema, then tag it for the batcher. An invalid message is failed
+  immediately — it never enters the batch. Called from the generated
+  `handle_message/3` of a batch node.
+  """
+  @spec batch_message(Message.t(), Config.t()) :: Message.t()
+  def batch_message(%Message{} = msg, %Config{manifest: manifest, in_port: in_port}) do
+    case Pipeline.validate_inbound(manifest, in_port, msg.data) do
+      :ok -> Message.put_batcher(msg, :default)
+      {:error, reason} -> Message.failed(msg, reason)
+    end
+  end
+
+  @doc """
+  Run an aggregate (batch) node over a batch of messages. `pure_core` receives
+  the **list** of payloads (not a single one) and reduces them; `effect_shell`
+  emits the aggregate result (or splits / drops, like any node). Returns the
+  (possibly failed) messages — called from the generated `handle_batch/4`.
+
+  Best-effort / at-least-once: a failed aggregate fails every message in the
+  batch, and Broadway re-delivers per its config. The batch path does not run
+  per-message retry / idempotency / timeout (the validator rejects those on a
+  `[batch]` node).
+  """
+  @spec process_batch([Message.t()], Config.t()) :: [Message.t()]
+  def process_batch(messages, %Config{manifest: manifest} = cfg) do
+    # One in-port signal per batch, so coverage/trace mark the port reached.
+    :telemetry.execute(
+      [:bloccs, :node, :start],
+      %{system_time: System.system_time()},
+      batch_meta(cfg)
+    )
+
+    ctx = Context.new(effects: Effects.bind(manifest), received_at: DateTime.utc_now())
+    data = Enum.map(messages, & &1.data)
+
+    case run_node(manifest, data, ctx) do
+      {:emits, []} ->
+        :telemetry.execute([:bloccs, :node, :dropped], %{}, batch_meta(cfg))
+        messages
+
+      {:emits, emits} ->
+        case dispatch_all(emits, cfg) do
+          [] ->
+            messages
+
+          failures ->
+            :telemetry.execute(
+              [:bloccs, :node, :dispatch_error],
+              %{count: length(failures)},
+              Map.put(batch_meta(cfg), :failures, failures)
+            )
+
+            Enum.map(messages, &Message.failed(&1, {:dispatch_failed, failures}))
+        end
+
+      {:error, reason} ->
+        Enum.map(messages, &Message.failed(&1, reason))
+    end
+  end
+
+  defp batch_meta(%Config{} = cfg) do
+    %{
+      network: cfg.network_id,
+      node: cfg.local_id,
+      in_port: cfg.in_port,
+      attempt: 0,
+      observability: cfg.manifest.observability
+    }
+  end
+
   defp do_process(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
     dedup = dedup_target(cfg, msg.data)
 
@@ -109,22 +181,24 @@ defmodule Bloccs.Runtime do
   defp dispatch_emits(emits, msg, cfg, dedup) do
     mark_done(dedup)
 
-    failures =
-      Enum.flat_map(emits, fn {port, payload} ->
-        case Router.dispatch(cfg.network_id, cfg.local_id, port, payload) do
-          :ok -> []
-          {:error, fs} -> fs
-        end
-      end)
-
-    case failures do
+    case dispatch_all(emits, cfg) do
       [] ->
         msg
 
-      _ ->
+      failures ->
         emit(:dispatch_error, %{count: length(failures)}, cfg, msg, %{failures: failures})
         Message.failed(msg, {:dispatch_failed, failures})
     end
+  end
+
+  # Dispatch each `{port, payload}` and collect any per-edge delivery failures.
+  defp dispatch_all(emits, %Config{} = cfg) do
+    Enum.flat_map(emits, fn {port, payload} ->
+      case Router.dispatch(cfg.network_id, cfg.local_id, port, payload) do
+        :ok -> []
+        {:error, fs} -> fs
+      end
+    end)
   end
 
   # On failure, consult the node's retry policy. If the reason is retriable and

@@ -1,0 +1,16 @@
+[node]
+id      = "agg_collect"
+version = "0.1.0"
+kind    = "sink"
+
+[ports.in]
+summary = { schema = "Summary@1" }
+
+[ports.out]
+done = { schema = "Summary@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.AggregateFixtures.Collect.transform/2"
+effect_shell = "Bloccs.Integration.AggregateFixtures.Collect.execute/2"

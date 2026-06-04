@@ -103,13 +103,24 @@ Every node's implementation is split in two, by design:
 - **pure core** — `pure_core(message, ctx) :: {:ok, intermediate} | {:error, reason}`.
   No IO, no clock, no randomness. Pure validation and computation. Easy to test,
   deterministic.
-- **effect shell** — `effect_shell(intermediate, ctx) :: {:emit, port, payload} | {:error, reason}`.
-  Receives a `%Bloccs.Context{}` whose `effects` field holds the capability
-  struct. This is the only place the world is touched, and only through declared
-  effects.
+- **effect shell** — receives a `%Bloccs.Context{}` whose `effects` field holds
+  the capability struct. This is the only place the world is touched, and only
+  through declared effects. Its return value decides what flows downstream:
+
+  | return | meaning |
+  |---|---|
+  | `{:emit, port, payload}` | emit one message on one out-port |
+  | `{:emit, [{port, payload}, …]}` | **split**: emit several messages at once (distinct payloads, any ports) |
+  | `:drop` | **filter**: consume the message, emit nothing |
+  | `{:error, reason}` | fail the message (retried if the node's policy allows) |
 
 The two are separate functions with separate typespecs, named in the manifest's
 `[contract]`. (The names are yours — the examples use `transform`/`execute`.)
+
+**Aggregation.** A node with a `[batch]` block is an *aggregate*: it processes
+messages in batches (count or time windows, via Broadway batchers), so its
+`pure_core` receives the **list** of payloads in the batch and reduces them to a
+single result. See [`[batch]`](manifest-reference.md) in the manifest reference.
 
 ## Network
 

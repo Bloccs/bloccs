@@ -21,7 +21,7 @@ defmodule Bloccs.Validator do
   - supervision strategy ∈ valid set
   """
 
-  alias Bloccs.Manifest.{Node, Network, Edge, NetworkNode, Effects, Contract, Port}
+  alias Bloccs.Manifest.{Node, Network, Edge, NetworkNode, Effects, Contract, Batch, Port}
 
   @known_effects [:http, :db, :time, :random]
 
@@ -51,7 +51,8 @@ defmodule Bloccs.Validator do
       List.flatten([
         check_effects(node),
         check_contract(node),
-        check_ports(node, opts)
+        check_ports(node, opts),
+        check_batch(node)
       ])
 
     ok_or_errors(issues)
@@ -197,6 +198,56 @@ defmodule Bloccs.Validator do
         message: "expected %{key: \"...\"}, got #{inspect(other)}"
       }
     ]
+
+  defp check_batch(%Node{batch: nil}), do: []
+
+  defp check_batch(%Node{batch: %Batch{size: size, timeout_ms: timeout}, contract: c, path: path}) do
+    pos_int = fn
+      nil, _ ->
+        []
+
+      n, _ when is_integer(n) and n > 0 ->
+        []
+
+      n, field ->
+        [
+          %Issue{
+            file: path,
+            scope: "[batch].#{field}",
+            message: "expected positive integer, got #{inspect(n)}"
+          }
+        ]
+    end
+
+    presence =
+      if is_nil(size) and is_nil(timeout) do
+        [
+          %Issue{
+            file: path,
+            scope: "[batch]",
+            message: "must set at least one of `size` or `timeout_ms`"
+          }
+        ]
+      else
+        []
+      end
+
+    # The batch path does not yet honour per-message retry / idempotency /
+    # timeout, so reject the combination rather than silently ignore it.
+    combo =
+      [{c.retry, "retry"}, {c.idempotency, "idempotency"}, {c.timeout_ms, "timeout_ms"}]
+      |> Enum.filter(fn {v, _} -> not is_nil(v) end)
+      |> Enum.map(fn {_, name} ->
+        %Issue{
+          file: path,
+          scope: "[batch]",
+          message:
+            "a [batch] node cannot also declare [contract].#{name} (unsupported in this version)"
+        }
+      end)
+
+    pos_int.(size, "size") ++ pos_int.(timeout, "timeout_ms") ++ presence ++ combo
+  end
 
   defp check_ports(%Node{ports_in: i, ports_out: o, path: path}, opts) do
     require_schemas? = Keyword.get(opts, :require_schemas, false)

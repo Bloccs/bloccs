@@ -17,6 +17,7 @@ defmodule Bloccs.Parser do
     Supervision,
     Effects,
     Contract,
+    Batch,
     Doc,
     Port
   }
@@ -115,6 +116,7 @@ defmodule Bloccs.Parser do
         {:ports_out, "[ports.out]", &cast_ports(&1, "[ports.out]")},
         {:effects, "[effects]", &cast_effects/1},
         {:contract, "[contract]", &cast_contract/1},
+        {:batch, "[batch]", &cast_batch/1, true},
         {:observability, "[observability]", &cast_observability/1, true}
       ])
 
@@ -131,6 +133,7 @@ defmodule Bloccs.Parser do
         ports_out: fields[:ports_out] || %{},
         effects: fields[:effects] || %Effects{},
         contract: fields[:contract],
+        batch: fields[:batch],
         observability: fields[:observability] || %{}
       }
 
@@ -195,6 +198,7 @@ defmodule Bloccs.Parser do
 
   defp fetch_raw(map, :effects), do: Map.get(map, "effects", :missing)
   defp fetch_raw(map, :contract), do: Map.get(map, "contract", :missing)
+  defp fetch_raw(map, :batch), do: Map.get(map, "batch", :missing)
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
 
   defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k}) do
@@ -291,6 +295,12 @@ defmodule Bloccs.Parser do
   end
 
   defp cast_contract(_), do: {:error, [%Error{message: "expected a table"}]}
+
+  defp cast_batch(map) when is_map(map) do
+    {:ok, %Batch{size: Map.get(map, "size"), timeout_ms: Map.get(map, "timeout_ms")}}
+  end
+
+  defp cast_batch(_), do: {:error, [%Error{message: "expected a table"}]}
 
   defp cast_mfa(nil, _), do: {:error, [%Error{message: "missing pure_core or effect_shell"}]}
 

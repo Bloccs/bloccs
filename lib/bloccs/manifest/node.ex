@@ -6,7 +6,7 @@ defmodule Bloccs.Manifest.Node do
   and the (future) canvas renders.
   """
 
-  alias Bloccs.Manifest.{Effects, Port, Contract, Doc}
+  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch}
 
   @type kind :: :source | :transform | :router | :sink
 
@@ -20,6 +20,7 @@ defmodule Bloccs.Manifest.Node do
           ports_out: %{atom() => Port.t()},
           effects: Effects.t(),
           contract: Contract.t(),
+          batch: Batch.t() | nil,
           observability: %{optional(atom()) => term()}
         }
 
@@ -34,6 +35,7 @@ defmodule Bloccs.Manifest.Node do
     :ports_out,
     :effects,
     :contract,
+    :batch,
     observability: %{}
   ]
 
@@ -131,6 +133,26 @@ defmodule Bloccs.Manifest.Effects do
       end
     end)
   end
+end
+
+defmodule Bloccs.Manifest.Batch do
+  @moduledoc """
+  Batch / aggregate config from `[batch]`. Present only on aggregate nodes.
+
+  When set, the node processes messages in **batches** rather than one at a time:
+  its `pure_core` receives the **list** of payloads in the batch (not a single
+  payload) and reduces them; its `effect_shell` emits a single aggregate result
+  (or splits / drops, like any node). The batch flushes when it reaches `size`
+  messages or after `timeout_ms` of idle — whichever comes first, so a partial
+  batch is never stranded.
+  """
+
+  @type t :: %__MODULE__{
+          size: pos_integer() | nil,
+          timeout_ms: pos_integer() | nil
+        }
+
+  defstruct [:size, :timeout_ms]
 end
 
 defmodule Bloccs.Manifest.Contract do
