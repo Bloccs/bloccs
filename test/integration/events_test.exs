@@ -134,6 +134,31 @@ defmodule Bloccs.Integration.EventsTest do
     assert_receive {:bloccs_sink, :events, :notify, :notified, _}, 2_000
   end
 
+  test "a node failing on a message is isolated — the network keeps processing", %{
+    supervisor: sup
+  } do
+    # Make the enrich HTTP lookup blow up for every call.
+    MockHTTP.stub("GET", "http://enrichment.local/lookup", fn _ ->
+      raise "enrichment service is down"
+    end)
+
+    # A known event now fails inside enrich's effect shell. The failure is
+    # contained: no sink fires, and the network supervisor stays up.
+    push(%{id: "evt-poison", type: "order.created", payload: %{"order_id" => 99}})
+    refute_receive {:bloccs_sink, :events, :persist, :stored, _}, 500
+    refute_receive {:bloccs_sink, :events, :notify, :notified, _}, 200
+    assert Process.alive?(Process.whereis(sup))
+
+    # Recovery: with the dependency healthy again, a fresh event flows end-to-end
+    # through the same nodes — the pipeline was never torn down.
+    MockHTTP.stub("GET", "http://enrichment.local/lookup", fn _ -> %{"region" => "us-east"} end)
+
+    push(%{id: "evt-after-poison", type: "order.created", payload: %{"order_id" => 100}})
+    assert_receive {:bloccs_sink, :events, :persist, :stored, stored}, 2_000
+    assert stored.event_id == "evt-after-poison"
+    assert_receive {:bloccs_sink, :events, :notify, :notified, _}, 2_000
+  end
+
   defp subscribe_to_exposed_ports do
     :ok = Router.register_sink(:events, :persist, :stored, self())
     :ok = Router.register_sink(:events, :notify, :notified, self())
