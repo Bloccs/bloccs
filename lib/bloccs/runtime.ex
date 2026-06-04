@@ -98,39 +98,115 @@ defmodule Bloccs.Runtime do
       batch_meta(cfg)
     )
 
-    ctx = Context.new(effects: Effects.bind(manifest), received_at: DateTime.utc_now())
     data = Enum.map(messages, & &1.data)
 
-    case run_node(manifest, data, ctx) do
-      {:emits, []} ->
+    case run_and_dispatch(manifest, data, cfg) do
+      :ok ->
+        messages
+
+      :dropped ->
         :telemetry.execute([:bloccs, :node, :dropped], %{}, batch_meta(cfg))
         messages
 
-      {:emits, emits} ->
-        case dispatch_all(emits, cfg) do
-          [] ->
-            messages
+      {:dispatch_failed, failures} ->
+        :telemetry.execute(
+          [:bloccs, :node, :dispatch_error],
+          %{count: length(failures)},
+          Map.put(batch_meta(cfg), :failures, failures)
+        )
 
-          failures ->
-            :telemetry.execute(
-              [:bloccs, :node, :dispatch_error],
-              %{count: length(failures)},
-              Map.put(batch_meta(cfg), :failures, failures)
-            )
-
-            Enum.map(messages, &Message.failed(&1, {:dispatch_failed, failures}))
-        end
+        Enum.map(messages, &Message.failed(&1, {:dispatch_failed, failures}))
 
       {:error, reason} ->
         Enum.map(messages, &Message.failed(&1, reason))
     end
   end
 
-  defp batch_meta(%Config{} = cfg) do
+  @doc """
+  Record one arrival at a join node's in-port. Once the arrival's correlation key
+  (`[join].on`) has a payload on **every** in-port, the join contract runs over
+  the correlated `%{port => payload}` map and the result is dispatched. A partial
+  arrival is acked and held; a payload missing the correlation field fails the
+  message. Called from the generated per-in-port `handle_message/3` of a join.
+  """
+  @spec join_arrival(Message.t(), Config.t(), atom()) :: Message.t()
+  def join_arrival(%Message{} = msg, %Config{manifest: manifest} = cfg, port) do
+    case Pipeline.validate_inbound(manifest, port, msg.data) do
+      {:error, reason} ->
+        Message.failed(msg, reason)
+
+      :ok ->
+        # Mark the in-port reached (coverage/trace) before correlating.
+        :telemetry.execute(
+          [:bloccs, :node, :start],
+          %{system_time: System.system_time()},
+          join_meta(cfg, port)
+        )
+
+        case Bloccs.Join.arrive({cfg.network_id, cfg.local_id}, port, msg.data) do
+          :partial ->
+            msg
+
+          {:complete, payloads} ->
+            join_emit(msg, payloads, cfg, port)
+
+          {:error, reason} ->
+            Message.failed(msg, {:join_error, reason})
+        end
+    end
+  end
+
+  defp join_emit(msg, payloads, %Config{manifest: manifest} = cfg, port) do
+    case run_and_dispatch(manifest, payloads, cfg) do
+      :ok ->
+        msg
+
+      :dropped ->
+        :telemetry.execute([:bloccs, :node, :dropped], %{}, join_meta(cfg, port))
+        msg
+
+      {:dispatch_failed, failures} ->
+        :telemetry.execute(
+          [:bloccs, :node, :dispatch_error],
+          %{count: length(failures)},
+          Map.put(join_meta(cfg, port), :failures, failures)
+        )
+
+        Message.failed(msg, {:dispatch_failed, failures})
+
+      {:error, reason} ->
+        Message.failed(msg, reason)
+    end
+  end
+
+  # Run a node's contract over `data` — a single payload, a list (batch), or a
+  # correlated `%{port => payload}` map (join) — and dispatch the emits.
+  defp run_and_dispatch(manifest, data, cfg) do
+    ctx = Context.new(effects: Effects.bind(manifest), received_at: DateTime.utc_now())
+
+    case run_node(manifest, data, ctx) do
+      {:emits, []} ->
+        :dropped
+
+      {:emits, emits} ->
+        case dispatch_all(emits, cfg) do
+          [] -> :ok
+          failures -> {:dispatch_failed, failures}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp batch_meta(%Config{} = cfg), do: node_meta(cfg, cfg.in_port)
+  defp join_meta(%Config{} = cfg, port), do: node_meta(cfg, port)
+
+  defp node_meta(%Config{} = cfg, in_port) do
     %{
       network: cfg.network_id,
       node: cfg.local_id,
-      in_port: cfg.in_port,
+      in_port: in_port,
       attempt: 0,
       observability: cfg.manifest.observability
     }

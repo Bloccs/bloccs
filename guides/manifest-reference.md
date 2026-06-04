@@ -130,6 +130,40 @@ size       = 100
 timeout_ms = 5000
 ```
 
+### `[join]` — optional
+
+Present only on **join** nodes. A join node has **two or more** in-ports
+carrying distinct schemas; arrivals are correlated by the value of the `on`
+field (present in every input payload). When all in-ports have produced a
+payload for the same key, the node's `pure_core` receives the map
+`%{port => payload}` and emits the joined result. (This is the one case where a
+node may declare more than one in-port — each compiles to its own pipeline.)
+
+| key | type | default | meaning |
+|---|---|---|---|
+| `on` | string (field name) | — (required) | correlation key — a *field name* present in every input payload (not a predicate) |
+| `timeout_ms` | positive integer | — | how long to hold a partial match before giving up |
+| `deadletter` | string (out-port name) | — | a partial match that times out is emitted there as an `%{key, present, payloads}` envelope; without it, a timeout drops with a `[:bloccs, :join, :timeout]` event |
+
+A `[join]` node may **not** also be a `[batch]` node, nor declare
+`[contract].retry` / `idempotency` / `timeout_ms` (the join path is
+at-least-once and does not run those per-message policies yet).
+
+```toml
+[ports.in]
+left  = { schema = "Order@1" }
+right = { schema = "Payment@1" }
+
+[ports.out]
+joined     = { schema = "Reconciled@1" }
+deadletter = { schema = "Unmatched@1" }
+
+[join]
+on         = "order_id"
+timeout_ms = 30000
+deadletter = "deadletter"
+```
+
 ### `[observability]` — optional
 
 A free-form table captured onto the node (`metrics`, `traces`, …); telemetry is

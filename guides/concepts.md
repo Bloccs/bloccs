@@ -122,6 +122,14 @@ messages in batches (count or time windows, via Broadway batchers), so its
 `pure_core` receives the **list** of payloads in the batch and reduces them to a
 single result. See [`[batch]`](manifest-reference.md) in the manifest reference.
 
+**Join.** A node with a `[join]` block has two or more in-ports with distinct
+schemas; arrivals are correlated by the `on` field, and once every in-port has a
+payload for the same key, `pure_core` receives the `%{port => payload}` map and
+emits the joined result. A partial match that exceeds `timeout_ms` is sent to a
+declared `deadletter` out-port. This is the only case where a node may declare
+more than one in-port — fan-*in* to a single port (an undifferentiated *merge*)
+needs no special block.
+
 ## Network
 
 A **network** composes nodes into a graph. Its manifest declares:

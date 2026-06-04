@@ -6,7 +6,7 @@ defmodule Bloccs.Manifest.Node do
   and the (future) canvas renders.
   """
 
-  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch}
+  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch, Join}
 
   @type kind :: :source | :transform | :router | :sink
 
@@ -21,6 +21,7 @@ defmodule Bloccs.Manifest.Node do
           effects: Effects.t(),
           contract: Contract.t(),
           batch: Batch.t() | nil,
+          join: Join.t() | nil,
           observability: %{optional(atom()) => term()}
         }
 
@@ -36,6 +37,7 @@ defmodule Bloccs.Manifest.Node do
     :effects,
     :contract,
     :batch,
+    :join,
     observability: %{}
   ]
 
@@ -153,6 +155,34 @@ defmodule Bloccs.Manifest.Batch do
         }
 
   defstruct [:size, :timeout_ms]
+end
+
+defmodule Bloccs.Manifest.Join do
+  @moduledoc """
+  Join / correlation config from `[join]`. Present only on join nodes.
+
+  A join node has **two or more** in-ports carrying distinct schemas. Arrivals
+  are correlated by the value of the `on` field (a field name present in every
+  input payload) — when all in-ports have produced a payload for the same key,
+  the node's `pure_core` receives the map `%{port => payload}` and emits the
+  joined result.
+
+  - `on` — the correlation-key *field name* (not a predicate).
+  - `timeout_ms` — how long to wait for the other side(s) before giving up.
+  - `deadletter` — the name of an out-port; a partial match that times out is
+    emitted there (as an `%{key, ports, payloads}` envelope) so nothing is lost.
+    Optional — without it, a timed-out partial is dropped with a
+    `[:bloccs, :join, :timeout]` event.
+  """
+
+  @type t :: %__MODULE__{
+          on: String.t(),
+          timeout_ms: pos_integer() | nil,
+          deadletter: atom() | nil
+        }
+
+  @enforce_keys [:on]
+  defstruct [:on, :timeout_ms, :deadletter]
 end
 
 defmodule Bloccs.Manifest.Contract do
