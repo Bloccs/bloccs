@@ -6,12 +6,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — flow primitives
+
+- **Filter + multi-emit** — the effect shell may return `:drop` (filter — emit
+  nothing) or `{:emit, [{port, payload}, …]}` (split — many messages / ports at
+  once), in addition to the single `{:emit, port, payload}`. A drop emits a
+  `[:bloccs, :node, :dropped]` event.
+- **Merge (fan-in)** — several edges may target one in-port (an undifferentiated,
+  unordered merge); no special construct needed.
+- **Aggregate / batch / window** — a `[batch]` block (`size` / `timeout_ms`)
+  makes a node process messages in windows via Broadway batchers; its `pure_core`
+  receives the list of payloads and reduces them.
+- **Join (multi-input)** — a `[join]` block correlates two or more distinct typed
+  in-ports by a key field (`on`); each in-port compiles to its own pipeline and
+  arrivals are matched in `Bloccs.Join`, with a `deadletter` out-port for partials
+  that exceed `timeout_ms`. This lifts the single-input-port limit for join nodes.
+- **Throttle + delay** — `[rate]` (Broadway producer rate limiting) and `[delay]`
+  (producer time-shift). Debounce is a time-windowed `[batch]`.
+
 ### Known limitations
 
-- Nodes are limited to a **single input port**; the compiler does not yet emit a
-  producer per in-port for multi-input nodes.
-- `Bloccs.Router.dispatch/4` does not surface downstream delivery failures
-  (`:no_producer`, push timeout) to the caller.
+- **Cyclic networks** remain out of scope (DAG-only); feedback loops need a
+  deadlock-safe edge mode still on the roadmap.
 
 ## [0.1.0] — unreleased (pre-release)
 
