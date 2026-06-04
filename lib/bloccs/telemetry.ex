@@ -41,6 +41,13 @@ defmodule Bloccs.Telemetry do
   - `[:bloccs, :node, :skipped]` — an idempotent duplicate was dropped
     - measurements: `%{}`
     - metadata: base metadata
+  - `[:bloccs, :node, :dropped]` — a node *filtered* a message: its effect shell
+    returned `:drop` (or an empty emit list), so the message was consumed and
+    acked without dispatching anything downstream. Distinct from `:skipped`
+    (which is idempotency de-duplication), so filter and dedup metrics stay
+    separable.
+    - measurements: `%{}`
+    - metadata: base metadata
   - `[:bloccs, :node, :dispatch_error]` — a node emitted successfully but one or
     more downstream deliveries failed; the message is failed (not retried, since
     the effect already ran)
@@ -69,6 +76,7 @@ defmodule Bloccs.Telemetry do
     [:bloccs, :node, :exception],
     [:bloccs, :node, :retry],
     [:bloccs, :node, :skipped],
+    [:bloccs, :node, :dropped],
     [:bloccs, :node, :dispatch_error],
     [:bloccs, :producer, :backpressure]
   ]
@@ -118,6 +126,10 @@ defmodule Bloccs.Telemetry do
 
   def handle_event([:bloccs, :node, :skipped], _meas, meta, %{level: level}) do
     Logger.log(level, "bloccs #{meta.network}.#{meta.node} skipped duplicate (idempotent)")
+  end
+
+  def handle_event([:bloccs, :node, :dropped], _meas, meta, %{level: level}) do
+    Logger.log(level, "bloccs #{meta.network}.#{meta.node} dropped message (filtered)")
   end
 
   def handle_event([:bloccs, :node, :dispatch_error], %{count: count}, meta, _config) do

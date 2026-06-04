@@ -1,0 +1,25 @@
+[network]
+id      = "filter_split"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+gate       = { use = "../nodes/gate.bloccs" }
+keep_sink  = { use = "../nodes/keep_sink.bloccs" }
+audit_sink = { use = "../nodes/audit_sink.bloccs" }
+
+# gate splits one message to BOTH downstream sinks (distinct payloads per port).
+[[edges]]
+from = "gate.kept"
+to   = "keep_sink.item"
+
+[[edges]]
+from = "gate.audit"
+to   = "audit_sink.entry"
+
+[expose]
+in  = { message = "gate.message" }
+out = { stored = "keep_sink.stored", logged = "audit_sink.logged" }
+
+[supervision]
+strategy = "one_for_one"

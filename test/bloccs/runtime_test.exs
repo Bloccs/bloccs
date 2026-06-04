@@ -27,6 +27,16 @@ defmodule Bloccs.RuntimeTest do
 
     # Effect shell: emit on the named port, or fail / route by content.
     def execute(%{"shell_error" => true}, _ctx), do: {:error, :rejected_by_shell}
+    # Filter: consume the message, emit nothing.
+    def execute(%{"drop" => true}, _ctx), do: :drop
+    # Filter via an explicit empty emit list (equivalent to :drop).
+    def execute(%{"drop_empty" => true}, _ctx), do: {:emit, []}
+    # Split / multi-emit: one invocation, two out-ports, distinct payloads.
+    def execute(%{"split" => true}, _ctx),
+      do: {:emit, [{:out_a, %{"which" => "a"}}, {:out_b, %{"which" => "b"}}]}
+
+    # Contract violation: a malformed emit (port is not an atom).
+    def execute(%{"bad_emit" => true}, _ctx), do: {:emit, [{"not_an_atom", %{}}]}
     def execute(data, _ctx), do: {:emit, :out, data}
   end
 
@@ -129,6 +139,26 @@ defmodule Bloccs.RuntimeTest do
   pure_core = "Bloccs.RuntimeTest.Impl.transform/2"
   effect_shell = "Bloccs.RuntimeTest.Impl.execute/2"
   idempotency = { key = "request_id" }
+  """
+
+  @split_manifest ~S"""
+  [node]
+  id = "runtime_split_demo"
+  version = "0.1.0"
+  kind = "transform"
+
+  [ports.in]
+  inbound = { schema = "RtReq@1" }
+
+  [ports.out]
+  out_a = { schema = "RtResp@1" }
+  out_b = { schema = "RtResp@1" }
+
+  [effects]
+
+  [contract]
+  pure_core = "Bloccs.RuntimeTest.Impl.transform/2"
+  effect_shell = "Bloccs.RuntimeTest.Impl.execute/2"
   """
 
   # A minimal GenStage consumer that forwards every delivered message to a
@@ -386,6 +416,72 @@ defmodule Bloccs.RuntimeTest do
                Runtime.process(msg(%{"k" => 123}), cfg)
 
       refute_receive {:bloccs_sink, _, _, _, _}
+    end
+  end
+
+  describe "process/2 filter (:drop)" do
+    setup do
+      ref = make_ref()
+      handler = "rt-drop-#{inspect(ref)}"
+      test_pid = self()
+
+      :telemetry.attach_many(
+        handler,
+        [[:bloccs, :node, :dropped], [:bloccs, :emit]],
+        fn event, meas, meta, _ -> send(test_pid, {:telemetry, event, meas, meta}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      :ok
+    end
+
+    test "a :drop consumes the message, dispatches nothing, and is not failed", %{cfg: cfg} do
+      result = Runtime.process(msg(%{"drop" => true}), cfg)
+
+      assert refute_failed(result)
+      refute_receive {:bloccs_sink, _, _, _, _}, 100
+      assert_receive {:telemetry, [:bloccs, :node, :dropped], %{}, %{node: :demo}}
+      # A drop emits nothing, so no [:bloccs, :emit] (coverage) signal fires.
+      refute_receive {:telemetry, [:bloccs, :emit], _, _}, 100
+    end
+
+    test "an empty emit list is equivalent to :drop", %{cfg: cfg} do
+      result = Runtime.process(msg(%{"drop_empty" => true}), cfg)
+
+      assert refute_failed(result)
+      refute_receive {:bloccs_sink, _, _, _, _}, 100
+      assert_receive {:telemetry, [:bloccs, :node, :dropped], %{}, %{node: :demo}}
+    end
+  end
+
+  describe "process/2 split (multi-emit)" do
+    setup %{cfg: cfg} do
+      {:ok, manifest} = Parser.parse_node_string(@split_manifest)
+      scfg = %{cfg | manifest: manifest}
+
+      # Observe both out-ports.
+      Bloccs.Router.register_sink(:rt_net, :demo, :out_a, self())
+      Bloccs.Router.register_sink(:rt_net, :demo, :out_b, self())
+
+      %{scfg: scfg}
+    end
+
+    test "one invocation dispatches to several out-ports with distinct payloads", %{scfg: scfg} do
+      result = Runtime.process(msg(%{"split" => true}), scfg)
+
+      assert refute_failed(result)
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out_a, %{"which" => "a"}}
+      assert_receive {:bloccs_sink, :rt_net, :demo, :out_b, %{"which" => "b"}}
+    end
+  end
+
+  describe "process/2 contract violations" do
+    test "a malformed emit (non-atom port) fails the message instead of crashing", %{cfg: cfg} do
+      assert %Message{status: {:failed, {:bad_emit, _}}} =
+               Runtime.process(msg(%{"bad_emit" => true}), cfg)
+
+      refute_receive {:bloccs_sink, _, _, _, _}, 100
     end
   end
 end

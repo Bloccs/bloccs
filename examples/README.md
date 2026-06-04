@@ -9,6 +9,7 @@ zero external services.
 | [`tour/`](tour) · hello | node · port · schema · the parse→validate→compile→run loop | `mix tour.hello` |
 | [`tour/`](tour) · pipeline | edges · effects (mock HTTP) · schema-typed wires | `mix tour.pipeline` |
 | [`tour/`](tour) · branching | branching · fan-out · multiple out-ports | `mix tour.branching` |
+| [`tour/`](tour) · filter | filtering (`:drop`) · split / multi-emit (one node → many out-ports) | `mix tour.filter` |
 | [`events/`](events) | **the flagship** — HTTP + DB effects, retry, timeout, idempotency, branching, fan-out, coverage on a webhook processor | `mix events.demo` |
 | [`real_backend/`](real_backend) | swapping the mock effects for real HTTP (Req) + SQLite (Ecto) | `mix price_watch.demo` |
 
