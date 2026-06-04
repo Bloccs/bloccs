@@ -21,7 +21,7 @@ defmodule Bloccs.Validator do
   - supervision strategy ∈ valid set
   """
 
-  alias Bloccs.Manifest.{Node, Network, Edge, NetworkNode, Effects, Contract, Batch, Port}
+  alias Bloccs.Manifest.{Node, Network, Edge, NetworkNode, Effects, Contract, Batch, Join, Port}
 
   @known_effects [:http, :db, :time, :random]
 
@@ -52,7 +52,8 @@ defmodule Bloccs.Validator do
         check_effects(node),
         check_contract(node),
         check_ports(node, opts),
-        check_batch(node)
+        check_batch(node),
+        check_join(node)
       ])
 
     ok_or_errors(issues)
@@ -249,7 +250,102 @@ defmodule Bloccs.Validator do
     pos_int.(size, "size") ++ pos_int.(timeout, "timeout_ms") ++ presence ++ combo
   end
 
-  defp check_ports(%Node{ports_in: i, ports_out: o, path: path}, opts) do
+  defp check_join(%Node{join: nil}), do: []
+
+  defp check_join(%Node{
+         join: %Join{on: on, timeout_ms: timeout, deadletter: dl},
+         ports_in: pin,
+         ports_out: pout,
+         contract: c,
+         batch: batch,
+         path: path
+       }) do
+    arity =
+      if map_size(pin) < 2 do
+        [
+          %Issue{
+            file: path,
+            scope: "[ports.in]",
+            message: "a [join] node needs at least two input ports"
+          }
+        ]
+      else
+        []
+      end
+
+    on_issue =
+      if is_binary(on) and on != "" do
+        []
+      else
+        [
+          %Issue{
+            file: path,
+            scope: "[join].on",
+            message: "must be a non-empty correlation field name"
+          }
+        ]
+      end
+
+    timeout_issue =
+      cond do
+        is_nil(timeout) ->
+          []
+
+        is_integer(timeout) and timeout > 0 ->
+          []
+
+        true ->
+          [
+            %Issue{
+              file: path,
+              scope: "[join].timeout_ms",
+              message: "expected positive integer, got #{inspect(timeout)}"
+            }
+          ]
+      end
+
+    dl_issue =
+      if is_nil(dl) or Map.has_key?(pout, dl) do
+        []
+      else
+        [
+          %Issue{
+            file: path,
+            scope: "[join].deadletter",
+            message: "references unknown out-port #{inspect(dl)}"
+          }
+        ]
+      end
+
+    batch_issue =
+      if batch,
+        do: [
+          %Issue{
+            file: path,
+            scope: "[join]",
+            message: "a node cannot be both a [join] and a [batch]"
+          }
+        ],
+        else: []
+
+    # Like [batch], the join path does not run per-message retry / idempotency /
+    # timeout — reject the combination rather than silently ignore it.
+    combo =
+      [{c.retry, "retry"}, {c.idempotency, "idempotency"}, {c.timeout_ms, "timeout_ms"}]
+      |> Enum.filter(fn {v, _} -> not is_nil(v) end)
+      |> Enum.map(fn {_, name} ->
+        %Issue{
+          file: path,
+          scope: "[join]",
+          message:
+            "a [join] node cannot also declare [contract].#{name} (unsupported in this version)"
+        }
+      end)
+
+    arity ++ on_issue ++ timeout_issue ++ dl_issue ++ batch_issue ++ combo
+  end
+
+  defp check_ports(%Node{ports_in: i, ports_out: o, path: path} = node, opts) do
     require_schemas? = Keyword.get(opts, :require_schemas, false)
 
     in_issues =
@@ -262,13 +358,17 @@ defmodule Bloccs.Validator do
         check_one_port(p, "[ports.out]", path, require_schemas?)
       end)
 
-    in_issues ++ out_issues ++ check_single_input(i, path)
+    in_issues ++ out_issues ++ check_single_input(node)
   end
 
-  # v0.1 compiles one producer per node, so a node is limited to a single input
-  # port. Reject multi-input manifests here with a clear message rather than
-  # letting the compiler crash on the single-port pattern match downstream.
-  defp check_single_input(ports_in, path) when map_size(ports_in) > 1 do
+  # A node compiles one producer per in-port. A plain node is limited to a single
+  # input port (the compiler builds one pipeline for it); a `[join]` node is the
+  # exception — it declares several in-ports, each compiled to its own pipeline
+  # feeding the correlation buffer. Reject other multi-input manifests with a
+  # clear message rather than crashing the compiler downstream.
+  defp check_single_input(%Node{join: %Join{}}), do: []
+
+  defp check_single_input(%Node{ports_in: ports_in, path: path}) when map_size(ports_in) > 1 do
     names = ports_in |> Map.keys() |> Enum.sort() |> Enum.map_join(", ", &inspect/1)
 
     [
@@ -276,12 +376,13 @@ defmodule Bloccs.Validator do
         file: path,
         scope: "[ports.in]",
         message:
-          "a node may declare at most one input port in v0.1 (found #{map_size(ports_in)}: #{names})"
+          "a node may declare at most one input port unless it is a [join] " <>
+            "(found #{map_size(ports_in)}: #{names})"
       }
     ]
   end
 
-  defp check_single_input(_ports_in, _path), do: []
+  defp check_single_input(%Node{}), do: []
 
   defp check_one_port(%Port{schema: schema, name: name}, section, path, require?) do
     cond do

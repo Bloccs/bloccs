@@ -18,6 +18,7 @@ defmodule Bloccs.Parser do
     Effects,
     Contract,
     Batch,
+    Join,
     Doc,
     Port
   }
@@ -117,6 +118,7 @@ defmodule Bloccs.Parser do
         {:effects, "[effects]", &cast_effects/1},
         {:contract, "[contract]", &cast_contract/1},
         {:batch, "[batch]", &cast_batch/1, true},
+        {:join, "[join]", &cast_join/1, true},
         {:observability, "[observability]", &cast_observability/1, true}
       ])
 
@@ -134,6 +136,7 @@ defmodule Bloccs.Parser do
         effects: fields[:effects] || %Effects{},
         contract: fields[:contract],
         batch: fields[:batch],
+        join: fields[:join],
         observability: fields[:observability] || %{}
       }
 
@@ -199,6 +202,7 @@ defmodule Bloccs.Parser do
   defp fetch_raw(map, :effects), do: Map.get(map, "effects", :missing)
   defp fetch_raw(map, :contract), do: Map.get(map, "contract", :missing)
   defp fetch_raw(map, :batch), do: Map.get(map, "batch", :missing)
+  defp fetch_raw(map, :join), do: Map.get(map, "join", :missing)
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
 
   defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k}) do
@@ -301,6 +305,21 @@ defmodule Bloccs.Parser do
   end
 
   defp cast_batch(_), do: {:error, [%Error{message: "expected a table"}]}
+
+  defp cast_join(%{"on" => on} = map) when is_binary(on) do
+    deadletter =
+      case Map.get(map, "deadletter") do
+        nil -> nil
+        port when is_binary(port) -> String.to_atom(port)
+      end
+
+    {:ok, %Join{on: on, timeout_ms: Map.get(map, "timeout_ms"), deadletter: deadletter}}
+  end
+
+  defp cast_join(map) when is_map(map),
+    do: {:error, [%Error{message: "missing required key `on` (correlation field)"}]}
+
+  defp cast_join(_), do: {:error, [%Error{message: "expected a table"}]}
 
   defp cast_mfa(nil, _), do: {:error, [%Error{message: "missing pure_core or effect_shell"}]}
 

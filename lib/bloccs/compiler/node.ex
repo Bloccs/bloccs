@@ -1,84 +1,142 @@
 defmodule Bloccs.Compiler.Node do
   @moduledoc """
-  Emits a Broadway pipeline source file for a single network node.
+  Emits Broadway pipeline source file(s) for a single network node.
 
-  Produces real `.ex` source on disk (not in-memory `Module.create/3`) so
-  stack traces point at debuggable file paths and generated output is
-  PR-reviewable — the "legible IR" thesis applied to compilation.
+  A plain node compiles to **one** pipeline. A `[join]` node compiles to **one
+  pipeline per in-port** — each its own producer, funneling arrivals into the
+  shared `Bloccs.Join` correlation buffer (Broadway has a single producer stage,
+  so distinct typed inputs can't share one pipeline).
+
+  Produces real `.ex` source on disk (not in-memory `Module.create/3`) so stack
+  traces point at debuggable file paths and generated output is PR-reviewable —
+  the "legible IR" thesis applied to compilation.
   """
 
   alias Bloccs.Manifest.{Network, NetworkNode, Node}
 
   @doc """
-  Compile one node. Returns the path of the written file.
+  Compile one node into its pipeline source file(s). Returns the written paths
+  (a single path for a plain node, one per in-port for a join).
   """
-  @spec compile(NetworkNode.t(), Network.t(), Path.t()) :: Path.t()
+  @spec compile(NetworkNode.t(), Network.t(), Path.t()) :: [Path.t()]
   def compile(%NetworkNode{} = nn, %Network{} = network, dest_dir) do
-    source = render(nn, network)
-    path = Path.join([dest_dir, "nodes", "#{nn.local_id}.ex"])
-    File.mkdir_p!(Path.dirname(path))
-    File.write!(path, source)
-    path
+    for {filename, source} <- render_all(nn, network) do
+      path = Path.join([dest_dir, "nodes", filename])
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, source)
+      path
+    end
   end
 
-  @doc "Module name of the compiled pipeline."
+  @doc """
+  The pipeline module(s) a node boots — one for a plain node, one per in-port for
+  a join. Used by the network supervisor to list children.
+  """
+  @spec pipeline_modules(Network.t(), NetworkNode.t()) :: [module()]
+  def pipeline_modules(%Network{} = network, %NetworkNode{manifest: %Node{join: nil}} = nn),
+    do: [module_name(network, nn)]
+
+  def pipeline_modules(%Network{} = network, %NetworkNode{manifest: manifest} = nn),
+    do: for({port, _} <- manifest.ports_in, do: port_module_name(network, nn, port))
+
+  @doc "Module name of the (single) compiled pipeline for a plain node."
   @spec module_name(Network.t(), NetworkNode.t()) :: module()
   def module_name(%Network{id: nid}, %NetworkNode{local_id: lid}) do
+    Module.concat([Bloccs.Compiled, Macro.camelize(nid), Macro.camelize(to_string(lid))])
+  end
+
+  @doc "Module name of a join node's per-in-port pipeline."
+  @spec port_module_name(Network.t(), NetworkNode.t(), atom()) :: module()
+  def port_module_name(%Network{id: nid}, %NetworkNode{local_id: lid}, port) do
     Module.concat([
       Bloccs.Compiled,
       Macro.camelize(nid),
-      Macro.camelize(to_string(lid))
+      Macro.camelize(to_string(lid)),
+      Macro.camelize(to_string(port))
     ])
   end
 
-  defp render(%NetworkNode{} = nn, %Network{} = network) do
-    %Node{} = manifest = nn.manifest
+  # ---------------- rendering ----------------
 
-    pure = manifest.contract.pure_core
+  defp render_all(%NetworkNode{manifest: %Node{join: nil}} = nn, network) do
+    [{"#{nn.local_id}.ex", render_simple(nn, network)}]
+  end
 
-    pipeline_module = module_name(network, nn)
-    pipeline_name = Bloccs.Router.pipeline_name(String.to_atom(network.id), nn.local_id)
+  defp render_all(%NetworkNode{manifest: manifest} = nn, network) do
+    for {port, port_def} <- manifest.ports_in do
+      {"#{nn.local_id}__#{port}.ex", render_join_port(nn, network, port, port_def)}
+    end
+  end
 
+  defp render_simple(%NetworkNode{manifest: manifest} = nn, %Network{} = network) do
     [{in_port, in_port_def}] = port_list(manifest.ports_in)
-    producer_name = Bloccs.Router.producer_name(String.to_atom(network.id), nn.local_id, in_port)
-
-    buffer = in_port_def && in_port_def.buffer
-    concurrency = Map.get(network.deploy.concurrency, nn.local_id, 1)
-
     batch = manifest.batch
-    batchers_opt = batchers_opt(batch)
 
     handle_message_call =
       if batch,
         do: "Bloccs.Runtime.batch_message(msg, config())",
         else: "Bloccs.Runtime.process(msg, config())"
 
+    render_pipeline(%{
+      network: network,
+      nn: nn,
+      module: module_name(network, nn),
+      pipeline_name: Bloccs.Router.pipeline_name(net_atom(network), nn.local_id),
+      producer_name: Bloccs.Router.producer_name(net_atom(network), nn.local_id, in_port),
+      in_port: in_port,
+      buffer: in_port_def && in_port_def.buffer,
+      concurrency: Map.get(network.deploy.concurrency, nn.local_id, 1),
+      handle_message_call: handle_message_call,
+      batchers_opt: batchers_opt(batch),
+      handle_batch_def: handle_batch_def(batch)
+    })
+  end
+
+  defp render_join_port(%NetworkNode{} = nn, %Network{} = network, port, port_def) do
+    render_pipeline(%{
+      network: network,
+      nn: nn,
+      module: port_module_name(network, nn, port),
+      pipeline_name: join_pipeline_name(net_atom(network), nn.local_id, port),
+      producer_name: Bloccs.Router.producer_name(net_atom(network), nn.local_id, port),
+      in_port: port,
+      buffer: port_def && port_def.buffer,
+      concurrency: Map.get(network.deploy.concurrency, nn.local_id, 1),
+      handle_message_call: "Bloccs.Runtime.join_arrival(msg, config(), #{inspect(port)})",
+      batchers_opt: "",
+      handle_batch_def: ""
+    })
+  end
+
+  defp render_pipeline(p) do
+    manifest = p.nn.manifest
+
     """
     # Auto-generated by Bloccs.Compiler.Node. Do not edit by hand.
     # Source manifest: #{manifest.path}
-    # Network: #{network.id} v#{network.version}
+    # Network: #{p.network.id} v#{p.network.version}
 
-    defmodule #{inspect(pipeline_module)} do
+    defmodule #{inspect(p.module)} do
       @moduledoc \"\"\"
-      Generated Broadway pipeline for `#{network.id}.#{nn.local_id}` (from
-      `#{manifest.path}`).
+      Generated Broadway pipeline for `#{p.network.id}.#{p.nn.local_id}` in-port
+      `#{p.in_port}` (from `#{manifest.path}`).
       \"\"\"
 
       use Broadway
 
-      @network_id #{inspect(String.to_atom(network.id))}
-      @local_id   #{inspect(nn.local_id)}
-      @in_port    #{inspect(in_port)}
-      @impl_module #{inspect(manifest_module(pure))}
+      @network_id #{inspect(net_atom(p.network))}
+      @local_id   #{inspect(p.nn.local_id)}
+      @in_port    #{inspect(p.in_port)}
+      @impl_module #{inspect(manifest_module(manifest.contract.pure_core))}
 
       def start_link(opts \\\\ []) do
         Broadway.start_link(__MODULE__,
-          name: #{inspect(pipeline_name)},
+          name: #{inspect(p.pipeline_name)},
           producer: [
-            module: {Bloccs.Producer, [name: #{inspect(producer_name)}, buffer: #{inspect(buffer)}]},
+            module: {Bloccs.Producer, [name: #{inspect(p.producer_name)}, buffer: #{inspect(p.buffer)}]},
             concurrency: 1
           ],
-          processors: [default: [concurrency: Keyword.get(opts, :concurrency, #{concurrency})]]#{batchers_opt}
+          processors: [default: [concurrency: Keyword.get(opts, :concurrency, #{p.concurrency})]]#{p.batchers_opt}
         )
       end
 
@@ -94,9 +152,9 @@ defmodule Bloccs.Compiler.Node do
 
       @impl Broadway
       def handle_message(_, %Broadway.Message{} = msg, _) do
-        #{handle_message_call}
+        #{p.handle_message_call}
       end
-    #{handle_batch_def(batch)}
+    #{p.handle_batch_def}
       defp config do
         %Bloccs.Runtime.Config{
           manifest: @impl_module.__bloccs_manifest__(),
@@ -130,6 +188,11 @@ defmodule Bloccs.Compiler.Node do
       end
     """
   end
+
+  defp join_pipeline_name(network_id, node_id, port),
+    do: :"bloccs_pipeline__#{network_id}__#{node_id}__#{port}"
+
+  defp net_atom(%Network{id: id}), do: String.to_atom(id)
 
   defp port_list(map) when map_size(map) == 0, do: [{:default, nil}]
   defp port_list(map), do: Enum.to_list(map)

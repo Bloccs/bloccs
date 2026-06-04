@@ -1,0 +1,23 @@
+[network]
+id      = "join"
+version = "0.1.0"
+
+[nodes]
+reconcile      = { use = "reconcile.bloccs" }
+reconcile_sink = { use = "reconcile_sink.bloccs" }
+dead_sink      = { use = "dead_sink.bloccs" }
+
+[[edges]]
+from = "reconcile.joined"
+to   = "reconcile_sink.rec"
+
+[[edges]]
+from = "reconcile.deadletter"
+to   = "dead_sink.env"
+
+[expose]
+in  = { left = "reconcile.left", right = "reconcile.right" }
+out = { reconciled = "reconcile_sink.done", dead = "dead_sink.dead" }
+
+[supervision]
+strategy = "one_for_one"

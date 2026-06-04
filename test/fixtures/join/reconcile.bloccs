@@ -1,0 +1,23 @@
+[node]
+id      = "reconcile"
+version = "0.1.0"
+kind    = "transform"
+
+[ports.in]
+left  = { schema = "Order@1" }
+right = { schema = "Payment@1" }
+
+[ports.out]
+joined     = { schema = "Reconciled@1" }
+deadletter = { schema = "Unmatched@1" }
+
+[effects]
+
+[join]
+on         = "order_id"
+timeout_ms = 200
+deadletter = "deadletter"
+
+[contract]
+pure_core    = "Bloccs.Integration.JoinFixtures.Reconcile.transform/2"
+effect_shell = "Bloccs.Integration.JoinFixtures.Reconcile.execute/2"

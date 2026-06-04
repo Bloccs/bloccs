@@ -122,6 +122,66 @@ defmodule Bloccs.ValidatorTest do
     end
   end
 
+  describe "validate_node/2 [join]" do
+    defp join_node(join_block, opts \\ []) do
+      ins =
+        Keyword.get(
+          opts,
+          :ins,
+          ~s(left  = { schema = "A@1" }\n      right = { schema = "B@1" })
+        )
+
+      """
+      [node]
+      id = "j"
+      version = "0.1.0"
+      kind = "transform"
+
+      [ports.in]
+      #{ins}
+
+      [ports.out]
+      joined     = { schema = "C@1" }
+      deadletter = { schema = "D@1" }
+
+      [effects]
+
+      #{join_block}
+
+      [contract]
+      pure_core = "Bloccs.Stub.transform/2"
+      effect_shell = "Bloccs.Stub.execute/2"
+      """
+    end
+
+    test "accepts a well-formed [join] node" do
+      raw = join_node(~s([join]\non = "id"\ntimeout_ms = 100\ndeadletter = "deadletter"))
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert :ok = Validator.validate_node(node)
+    end
+
+    test "rejects a join with fewer than two in-ports" do
+      raw = join_node(~s([join]\non = "id"), ins: ~s(only = { schema = "A@1" }))
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "at least two input ports"))
+    end
+
+    test "rejects a deadletter naming an unknown out-port" do
+      raw = join_node(~s([join]\non = "id"\ndeadletter = "nope"))
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "unknown out-port"))
+    end
+
+    test "rejects combining [join] with [batch]" do
+      raw = join_node(~s([join]\non = "id"\n\n[batch]\nsize = 10))
+      assert {:ok, node} = Parser.parse_node_string(raw)
+      assert {:error, issues} = Validator.validate_node(node)
+      assert Enum.any?(issues, &(&1.message =~ "cannot be both a [join] and a [batch]"))
+    end
+  end
+
   describe "validate_network/2" do
     @tag :tmp_dir
     test "accepts a well-formed two-node DAG", %{tmp_dir: tmp} do

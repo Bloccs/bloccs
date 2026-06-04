@@ -1,0 +1,16 @@
+[node]
+id      = "reconcile_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[ports.in]
+rec = { schema = "Reconciled@1" }
+
+[ports.out]
+done = { schema = "Reconciled@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.JoinFixtures.ReconcileSink.transform/2"
+effect_shell = "Bloccs.Integration.JoinFixtures.ReconcileSink.execute/2"

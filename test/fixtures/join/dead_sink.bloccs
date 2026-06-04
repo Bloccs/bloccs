@@ -1,0 +1,16 @@
+[node]
+id      = "dead_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[ports.in]
+env = { schema = "Unmatched@1" }
+
+[ports.out]
+dead = { schema = "Unmatched@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.JoinFixtures.DeadSink.transform/2"
+effect_shell = "Bloccs.Integration.JoinFixtures.DeadSink.execute/2"

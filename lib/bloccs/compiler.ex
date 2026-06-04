@@ -31,7 +31,7 @@ defmodule Bloccs.Compiler do
     File.mkdir_p!(Path.join(dest_dir, "nodes"))
 
     node_files =
-      Enum.map(network.nodes, fn {_local_id, nn} ->
+      Enum.flat_map(network.nodes, fn {_local_id, nn} ->
         Compiler.Node.compile(nn, network, dest_dir)
       end)
 
