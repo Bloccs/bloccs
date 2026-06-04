@@ -1,0 +1,16 @@
+[node]
+id      = "rate_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[ports.in]
+inp = { schema = "X@1" }
+
+[ports.out]
+out = { schema = "X@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.RateFixtures.Sink.transform/2"
+effect_shell = "Bloccs.Integration.RateFixtures.Sink.execute/2"

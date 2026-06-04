@@ -57,6 +57,18 @@ defmodule Bloccs.ProducerTest do
     assert_receive {:got, :x}, 500
   end
 
+  test "a delay producer time-shifts delivery by the configured ms" do
+    name = :"prod_delay_#{:erlang.unique_integer([:positive, :monotonic])}"
+    {:ok, pid} = Producer.start_link(name: name, delay: 150)
+    on_exit(fn -> if Process.alive?(pid), do: GenStage.stop(pid) end)
+    {:ok, _consumer} = Sink.start_link(pid, self())
+
+    # push returns immediately (delay shifts in time, it does not block).
+    assert :ok = Producer.push(name, %{n: 1})
+    refute_receive {:got, %{n: 1}}, 80
+    assert_receive {:got, %{n: 1}}, 500
+  end
+
   describe "bounded buffer back-pressure" do
     test "parks the caller when full and admits once a consumer drains (no drops)" do
       name = :"prod_buf_#{:erlang.unique_integer([:positive, :monotonic])}"

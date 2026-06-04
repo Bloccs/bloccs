@@ -21,7 +21,18 @@ defmodule Bloccs.Validator do
   - supervision strategy ∈ valid set
   """
 
-  alias Bloccs.Manifest.{Node, Network, Edge, NetworkNode, Effects, Contract, Batch, Join, Port}
+  alias Bloccs.Manifest.{
+    Node,
+    Network,
+    Edge,
+    NetworkNode,
+    Effects,
+    Contract,
+    Batch,
+    Join,
+    Rate,
+    Port
+  }
 
   @known_effects [:http, :db, :time, :random]
 
@@ -53,7 +64,9 @@ defmodule Bloccs.Validator do
         check_contract(node),
         check_ports(node, opts),
         check_batch(node),
-        check_join(node)
+        check_join(node),
+        check_rate(node),
+        check_delay(node)
       ])
 
     ok_or_errors(issues)
@@ -343,6 +356,57 @@ defmodule Bloccs.Validator do
       end)
 
     arity ++ on_issue ++ timeout_issue ++ dl_issue ++ batch_issue ++ combo
+  end
+
+  defp check_rate(%Node{rate: nil}), do: []
+
+  defp check_rate(%Node{
+         rate: %Rate{allowed: allowed, interval_ms: interval},
+         join: join,
+         path: path
+       }) do
+    pos = fn
+      n, _ when is_integer(n) and n > 0 ->
+        []
+
+      n, field ->
+        [
+          %Issue{
+            file: path,
+            scope: "[rate].#{field}",
+            message: "expected positive integer, got #{inspect(n)}"
+          }
+        ]
+    end
+
+    join_issue =
+      if join,
+        do: [%Issue{file: path, scope: "[rate]", message: "is not supported on a [join] node"}],
+        else: []
+
+    pos.(allowed, "allowed") ++ pos.(interval, "interval_ms") ++ join_issue
+  end
+
+  defp check_delay(%Node{delay_ms: nil}), do: []
+
+  defp check_delay(%Node{delay_ms: ms, join: join, path: path}) do
+    ms_issue =
+      if is_integer(ms) and ms > 0,
+        do: [],
+        else: [
+          %Issue{
+            file: path,
+            scope: "[delay].ms",
+            message: "expected positive integer, got #{inspect(ms)}"
+          }
+        ]
+
+    join_issue =
+      if join,
+        do: [%Issue{file: path, scope: "[delay]", message: "is not supported on a [join] node"}],
+        else: []
+
+    ms_issue ++ join_issue
   end
 
   defp check_ports(%Node{ports_in: i, ports_out: o, path: path} = node, opts) do

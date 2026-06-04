@@ -164,6 +164,36 @@ timeout_ms = 30000
 deadletter = "deadletter"
 ```
 
+### `[rate]` — optional
+
+Throttle: cap how fast the node's producer delivers messages downstream, using
+Broadway's built-in producer rate limiting.
+
+| key | type | meaning |
+|---|---|---|
+| `allowed` | positive integer | messages allowed per interval |
+| `interval_ms` | positive integer | the interval window, in ms |
+
+```toml
+[rate]
+allowed     = 100
+interval_ms = 1000
+```
+
+### `[delay]` — optional
+
+Delay: hold every message for `ms` before it enters the node (the producer
+time-shifts delivery — the push is acked immediately, it does not back-pressure).
+
+```toml
+[delay]
+ms = 5000
+```
+
+`[rate]` and `[delay]` are not supported on a `[join]` node. **Debounce** (collapse
+a burst, keep the last) is not a separate block — model it as a time-windowed
+`[batch]` whose `pure_core` keeps the last payload.
+
 ### `[observability]` — optional
 
 A free-form table captured onto the node (`metrics`, `traces`, …); telemetry is

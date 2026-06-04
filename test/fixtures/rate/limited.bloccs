@@ -1,0 +1,23 @@
+[node]
+id      = "limited"
+version = "0.1.0"
+kind    = "source"
+
+[ports.in]
+inp = { schema = "X@1" }
+
+[ports.out]
+out = { schema = "X@1" }
+
+[effects]
+
+[rate]
+allowed     = 10
+interval_ms = 1000
+
+[delay]
+ms = 50
+
+[contract]
+pure_core    = "Bloccs.Integration.RateFixtures.Limited.transform/2"
+effect_shell = "Bloccs.Integration.RateFixtures.Limited.execute/2"

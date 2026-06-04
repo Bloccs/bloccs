@@ -1,0 +1,18 @@
+[network]
+id      = "rate"
+version = "0.1.0"
+
+[nodes]
+limited   = { use = "limited.bloccs" }
+rate_sink = { use = "sink.bloccs" }
+
+[[edges]]
+from = "limited.out"
+to   = "rate_sink.inp"
+
+[expose]
+in  = { input  = "limited.inp" }
+out = { output = "rate_sink.out" }
+
+[supervision]
+strategy = "one_for_one"
