@@ -8,6 +8,12 @@ read it once and the rest of the docs will make sense.
 The two artifacts you write are **node manifests** and **network manifests**.
 Everything else is something those manifests refer to.
 
+Each primitive a node can be has a glyph in the bloccs notation — a node that
+declares an effect carries a badge, so "touches the outside world" is visible at
+a glance:
+
+![The bloccs notation: hexagon glyphs for node, source, sink, split, merge, filter, batch, join, throttle, delay, and subgraph; effectful nodes carry a badge](../assets/bloccs-notation.png)
+
 ## Manifest
 
 A **manifest** is a TOML file. It is the *source of truth* — not a config file
@@ -86,7 +92,7 @@ function call you happen to make, but a permission stated up front in
 The guarantee is **capability-based** and has two layers:
 
 1. **Runtime (load-bearing).** At bind time each *declared* axis becomes a real
-   adapter; each *undeclared* axis becomes a `Bloccs.Effects.Denied.Stub` whose
+   adapter; each *undeclared* axis becomes a denied-capability stub whose
    every method raises `Bloccs.Effects.Denied`. Declared adapters still enforce
    the per-call allowlist (an HTTP call to a host not in `allow` is refused).
 2. **Compile-time (ergonomics).** `use Bloccs.Node` walks the effect-shell AST

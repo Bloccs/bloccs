@@ -97,7 +97,7 @@ The runtime contract:
 Pure core is allowed nothing but pure computation. Effect shell receives a
 `%Bloccs.Context{}` whose `effects` field is a `%Bloccs.Effects.Capabilities{}`
 struct — each declared axis (`http`, `db`, `time`, `random`) is a concrete
-adapter; each *undeclared* axis is `%Bloccs.Effects.Denied.Stub{}` whose every
+adapter; each *undeclared* axis binds to a denied-capability stub whose every
 method raises `Bloccs.Effects.Denied`. That's the runtime half of the
 capability guarantee.
 
@@ -198,8 +198,8 @@ The sink subscription model exists for two reasons:
 
 Broadway names producer processes itself
 (`<pipeline_name>.Broadway.Producer_0`). To give the router a stable address
-we ALSO register the canonical name in `Bloccs.Registry` from inside
-`Bloccs.Producer.init/1`. This sidesteps the limitation that a BEAM process
+we ALSO register the canonical name in `Bloccs.Registry` when
+`Bloccs.Producer` starts. This sidesteps the limitation that a BEAM process
 can only carry one `Process.register`-style atom name. See
 `lib/bloccs/producer.ex` for the registration logic.
 
@@ -212,8 +212,8 @@ Two layers of guarantee, by design:
    is not declared in `[effects]`. Today this is a `IO.warn/2`; promoting it
    to a hard `CompileError` is a v0.2 goal once we trust the AST inference.
 2. **Runtime** (`Bloccs.Effects.bind/1`): builds a `Capabilities` struct
-   where every declared axis is a real adapter and every undeclared axis is
-   `Denied.Stub`. Calls to `Denied.Stub.*` raise `Bloccs.Effects.Denied`.
+   where every declared axis is a real adapter and every undeclared axis is a
+   denied-capability stub whose every method raises `Bloccs.Effects.Denied`.
    Calls to declared adapters still enforce the per-call allowlist (HTTP
    host, DB scope).
 

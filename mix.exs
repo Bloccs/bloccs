@@ -89,6 +89,7 @@ defmodule Bloccs.MixProject do
   defp docs do
     [
       main: "readme",
+      logo: "assets/bloccs-mark.png",
       source_url: @source_url,
       source_ref: "v#{@version}",
       assets: %{"assets" => "assets"},
@@ -105,6 +106,25 @@ defmodule Bloccs.MixProject do
       ],
       groups_for_extras: [
         Guides: ~r{guides/}
+      ],
+      nest_modules_by_prefix: [Bloccs.Effects, Bloccs.Manifest, Bloccs.Compiler],
+      groups_for_modules: [
+        "Manifests & parsing": [Bloccs.Parser, Bloccs.Schema, ~r/^Bloccs\.Manifest/],
+        Validation: [Bloccs.Validator, Bloccs.Node],
+        Compilation: [~r/^Bloccs\.Compiler/],
+        Runtime: [
+          Bloccs.Runtime,
+          Bloccs.Router,
+          Bloccs.Producer,
+          Bloccs.Join,
+          Bloccs.Retry,
+          Bloccs.Idempotency,
+          Bloccs.Context,
+          Bloccs.Pipeline
+        ],
+        Effects: [~r/^Bloccs\.Effects/],
+        Observability: [Bloccs.Telemetry, Bloccs.Trace, Bloccs.Coverage],
+        "Mix tasks": [~r/^Mix\.Tasks\.Bloccs/]
       ]
     ]
   end

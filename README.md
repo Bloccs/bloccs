@@ -230,6 +230,10 @@ the rest a small manifest block:
 | **join** | `[join]` — correlate two+ typed in-ports by a key |
 | **throttle / delay** | `[rate]` / `[delay]` |
 
+<p align="center">
+  <img width="720" alt="The bloccs notation: hexagon glyphs for each primitive — node, source, sink, split, merge, filter, batch, join, throttle, delay, subgraph — where a node that declares an effect carries a badge" src="assets/bloccs-notation.png">
+</p>
+
 Conditional logic lives in node code (a returned port, a `:drop`), never in edge
 predicates — which keeps the topology declarative and machine-checkable. See
 [`guides/concepts.md`](guides/concepts.md) and the
@@ -253,19 +257,19 @@ config :bloccs, Bloccs.Effects.DB.Ecto, repo: MyApp.Repo, returning: [:id]
 your own backend by implementing the `Bloccs.Effects.HTTP` / `DB` behaviour. See
 [`guides/effect-adapters.md`](guides/effect-adapters.md). A runnable example
 hitting real HTTP + SQLite (zero external services) lives in
-[`examples/real_backend`](examples/real_backend).
+[`examples/real_backend`](https://github.com/Bloccs/bloccs/tree/main/examples/real_backend).
 
 ## Examples
 
-A graded ladder under [`examples/`](examples) — see [`examples/README.md`](examples/README.md):
+A graded ladder under [`examples/`](https://github.com/Bloccs/bloccs/tree/main/examples) — see [`examples/README.md`](https://github.com/Bloccs/bloccs/blob/main/examples/README.md):
 
-- [`examples/tour`](examples/tour) — core concepts one rung at a time
+- [`examples/tour`](https://github.com/Bloccs/bloccs/tree/main/examples/tour) — core concepts one rung at a time
   (`mix tour.hello` · `mix tour.pipeline` · `mix tour.branching`), mock effects,
   zero setup.
-- [`examples/events`](examples/events) — the flagship: a webhook/event processor
+- [`examples/events`](https://github.com/Bloccs/bloccs/tree/main/examples/events) — the flagship: a webhook/event processor
   showing typed edges, HTTP + DB effects, retry, timeout, idempotency, branching,
   fan-out, and coverage (`mix events.demo`).
-- [`examples/real_backend`](examples/real_backend) — the same shape against real
+- [`examples/real_backend`](https://github.com/Bloccs/bloccs/tree/main/examples/real_backend) — the same shape against real
   HTTP (Req) + SQLite (Ecto) (`mix price_watch.demo`).
 
 ## CLI (Mix tasks)
@@ -317,11 +321,19 @@ broker at the edges for work that must survive restarts).
 ## Status
 
 **v0.1 — pre-release.** Not yet on Hex; APIs may change before the first
-release. The compiler core is feature-complete for the v0.1 vision: the full
-**parse → validate → compile → run** loop works, every declared runtime contract
-is honored, the effect adapters are real (behind a config switch), networks
-compose, and structural coverage is real. See
-[`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
+release. The full **parse → validate → compile → run** loop works end to end, and
+everything the manifests can declare is honored at runtime:
+
+- the **flow primitives** — transform, filter, split / fan-out, route, merge,
+  batch / window, join, throttle, delay (see [Flow primitives](#flow-primitives));
+- **per-node contracts** — retry, timeout, idempotency, bounded-buffer
+  back-pressure, and `:telemetry` spans, wired into the generated tree;
+- **scoped effects** with real HTTP / DB adapters behind a config switch;
+- **subgraph composition** (`use` a network as a node);
+- **trace + real structural coverage** (`mix bloccs.coverage`).
+
+See [`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
+The deferred items are listed under [Out of scope](#out-of-scope-for-v01).
 
 > **A note on the name.** In the design docs you'll see bloccs called an *IR for
 > Agentic Computation Graphs (ACGs)* — the north star is typed, supervised graphs
@@ -340,5 +352,3 @@ binary · full Dialyzer-level static effect proof · durable persistence.
 ## License
 
 MIT. Pro extensions ship later in a separate private repo (modeled on Oban Pro).
-</content>
-</invoke>

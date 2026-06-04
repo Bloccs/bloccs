@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 880" font-family="'Inter','Helvetica Neue',Arial,sans-serif">
+  <defs>
+    <!-- pointy-top hexagon, vertical left/right edges for L->R ports -->
+    <path id="hex" d="M0,-52 L45,-26 L45,26 L0,52 L-45,26 L-45,-26 Z"/>
+    <path id="hexInner" d="M0,-44 L38,-22 L38,22 L0,44 L-38,22 L-38,-22 Z"/>
+  </defs>
+
+  <!-- ground -->
+  <rect x="0" y="0" width="1000" height="880" fill="#09090b"/>
+
+  <!-- title -->
+  <text x="40" y="58" font-size="34" font-weight="700"><tspan fill="#7c37ab">bloccs</tspan><tspan fill="#fafafa" dx="10">notation</tspan></text>
+  <text x="40" y="86" font-size="14" fill="#a1a1aa">Primitive glyph set &#183; hexagon = cell &#183; purple = bloccs &#183; the manifest is canonical; this is a view</text>
+
+  <!-- ============ ROW 1 ============ -->
+
+  <!-- Node : pure_core (155,250) -->
+  <g transform="translate(155,250)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="0" cy="0" r="3" fill="#7c37ab" stroke="none"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="155" y="328" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Node</text>
+  <text x="155" y="346" text-anchor="middle" font-size="11" fill="#a1a1aa">pure_core</text>
+
+  <!-- Source : ingress effect (385,250) -->
+  <g transform="translate(385,250)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <use xlink:href="#hexInner" fill="none" stroke="#7c37ab" stroke-width="1.5" opacity="0.6"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="-17" cy="0" r="6" fill="#fafafa" stroke="none"/>
+      <line x1="-11" y1="0" x2="16" y2="0"/>
+      <polyline points="7,-9 19,0 7,9"/>
+    </g>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="0" cy="-52" r="6.5" fill="#c98bff" stroke="#09090b" stroke-width="2"/>
+  </g>
+  <text x="385" y="328" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Source</text>
+  <text x="385" y="346" text-anchor="middle" font-size="11" fill="#a1a1aa">ingress &#183; effect</text>
+
+  <!-- Sink : egress effect (615,250) -->
+  <g transform="translate(615,250)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <use xlink:href="#hexInner" fill="none" stroke="#7c37ab" stroke-width="1.5" opacity="0.6"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-20" y1="0" x2="9" y2="0"/>
+      <polyline points="1,-9 13,0 1,9"/>
+      <line x1="19" y1="-13" x2="19" y2="13"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="0" cy="-52" r="6.5" fill="#c98bff" stroke="#09090b" stroke-width="2"/>
+  </g>
+  <text x="615" y="328" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Sink</text>
+  <text x="615" y="346" text-anchor="middle" font-size="11" fill="#a1a1aa">egress &#183; effect</text>
+
+  <!-- Split : conditional fan-out (845,250) -->
+  <g transform="translate(845,250)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-34" y1="0" x2="-12" y2="0"/>
+      <polygon points="-12,0 -4,-8 4,0 -4,8" fill="#1a1326" stroke="#fafafa" stroke-width="3"/>
+      <line x1="4" y1="0" x2="34" y2="-22"/>
+      <line x1="4" y1="0" x2="34" y2="22"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="-22" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="22" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="845" y="328" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Split</text>
+  <text x="845" y="346" text-anchor="middle" font-size="11" fill="#a1a1aa">conditional fan-out</text>
+
+  <!-- ============ ROW 2 ============ -->
+
+  <!-- Merge : fan-in (155,470) -->
+  <g transform="translate(155,470)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-34" y1="-22" x2="-2" y2="0"/>
+      <line x1="-34" y1="22" x2="-2" y2="0"/>
+      <line x1="-2" y1="0" x2="34" y2="0"/>
+    </g>
+    <circle cx="-45" cy="-22" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="-45" cy="22" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="155" y="548" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Merge</text>
+  <text x="155" y="566" text-anchor="middle" font-size="11" fill="#a1a1aa">fan-in</text>
+
+  <!-- Filter : predicate drop (385,470) -->
+  <g transform="translate(385,470)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="-22,-16 22,-16 7,3 7,20 -7,20 -7,3" fill="none" stroke="#fafafa" stroke-width="4.5"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="385" y="548" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Filter</text>
+  <text x="385" y="566" text-anchor="middle" font-size="11" fill="#a1a1aa">predicate drop</text>
+
+  <!-- Batch : group N (615,470) -->
+  <g transform="translate(615,470)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4" fill="#1a1326" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-18" y="-18" width="26" height="26" rx="4"/>
+      <rect x="-9" y="-9" width="26" height="26" rx="4"/>
+      <rect x="0" y="0" width="26" height="26" rx="4"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="615" y="548" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Batch</text>
+  <text x="615" y="566" text-anchor="middle" font-size="11" fill="#a1a1aa">group N</text>
+
+  <!-- Join : correlate by key (845,470) -->
+  <g transform="translate(845,470)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-34" y1="-20" x2="-9" y2="0"/>
+      <line x1="-34" y1="20" x2="-9" y2="0"/>
+      <line x1="9" y1="0" x2="34" y2="0"/>
+      <circle cx="-2" cy="0" r="6.5"/>
+      <line x1="4" y1="0" x2="14" y2="0"/>
+      <line x1="9" y1="0" x2="9" y2="6"/>
+      <line x1="14" y1="0" x2="14" y2="6"/>
+    </g>
+    <circle cx="-45" cy="-20" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="-45" cy="20" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="845" y="548" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Join</text>
+  <text x="845" y="566" text-anchor="middle" font-size="11" fill="#a1a1aa">correlate by key</text>
+
+  <!-- ============ ROW 3 ============ -->
+
+  <!-- Throttle : rate limit (155,690) -->
+  <g transform="translate(155,690)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="-34" y1="0" x2="34" y2="0"/>
+      <polygon points="-16,-14 -16,14 0,0" fill="#1a1326" stroke="#fafafa" stroke-width="3.5"/>
+      <polygon points="16,-14 16,14 0,0" fill="#1a1326" stroke="#fafafa" stroke-width="3.5"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="155" y="768" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Throttle</text>
+  <text x="155" y="786" text-anchor="middle" font-size="11" fill="#a1a1aa">rate limit</text>
+
+  <!-- Delay : time shift (385,690) -->
+  <g transform="translate(385,690)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <g stroke="#fafafa" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="0" cy="0" r="18"/>
+      <line x1="0" y1="0" x2="0" y2="-12"/>
+      <line x1="0" y1="0" x2="9" y2="5"/>
+      <circle cx="0" cy="0" r="2.5" fill="#fafafa" stroke="none"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="385" y="768" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Delay</text>
+  <text x="385" y="786" text-anchor="middle" font-size="11" fill="#a1a1aa">time shift</text>
+
+  <!-- Subgraph : composed network (615,690) -->
+  <g transform="translate(615,690)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <use xlink:href="#hexInner" transform="scale(0.62)" fill="none" stroke="#fafafa" stroke-width="6"/>
+    <g fill="#c98bff" stroke="none">
+      <circle cx="-8" cy="3" r="2.4"/>
+      <circle cx="0" cy="-5" r="2.4"/>
+      <circle cx="8" cy="3" r="2.4"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+  </g>
+  <text x="615" y="768" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Subgraph</text>
+  <text x="615" y="786" text-anchor="middle" font-size="11" fill="#a1a1aa">composed network</text>
+
+  <!-- Effectful node : declared capability (845,690) -->
+  <g transform="translate(845,690)">
+    <use xlink:href="#hex" fill="#1a1326" stroke="#7c37ab" stroke-width="3"/>
+    <use xlink:href="#hexInner" fill="none" stroke="#7c37ab" stroke-width="1.5" opacity="0.6"/>
+    <g stroke="#fafafa" stroke-width="4.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="0" cy="0" r="3" fill="#7c37ab" stroke="none"/>
+    </g>
+    <circle cx="-45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="45" cy="0" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <circle cx="0" cy="-52" r="6.5" fill="#c98bff" stroke="#09090b" stroke-width="2"/>
+  </g>
+  <text x="845" y="768" text-anchor="middle" font-size="16" font-weight="700" fill="#fafafa">Node + effect</text>
+  <text x="845" y="786" text-anchor="middle" font-size="11" fill="#a1a1aa">declared capability</text>
+
+  <!-- ============ LEGEND ============ -->
+  <line x1="40" y1="810" x2="960" y2="810" stroke="#27272a" stroke-width="1"/>
+
+  <g transform="translate(70,842)">
+    <circle cx="0" cy="-4" r="4" fill="#7c37ab" stroke="#09090b" stroke-width="1.5"/>
+    <text x="14" y="0" font-size="13" fill="#a1a1aa">typed port (left = in, right = out)</text>
+  </g>
+  <g transform="translate(400,842)">
+    <circle cx="0" cy="-4" r="6.5" fill="#c98bff" stroke="#09090b" stroke-width="2"/>
+    <text x="16" y="0" font-size="13" fill="#a1a1aa">effect badge &#8212; node declares a capability</text>
+  </g>
+  <g transform="translate(740,842)">
+    <line x1="0" y1="-4" x2="22" y2="-4" stroke="#fafafa" stroke-width="2.5" stroke-linecap="round"/>
+    <polyline points="15,-9 23,-4 15,1" fill="none" stroke="#fafafa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="32" y="0" font-size="13" fill="#a1a1aa">data flows left &#8594; right</text>
+  </g>
+</svg>
