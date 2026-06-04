@@ -196,6 +196,28 @@ Every declared contract is wired into that runtime, not just parsed:
 - **Subgraph composition** — a `[nodes]` entry may `use` a *network* manifest;
   the parser flattens it into namespaced leaf nodes at parse time.
 
+## Flow primitives
+
+A node's behavior is its ports + contract, not a fixed "type". From those, the
+common dataflow shapes fall out — most are just what the effect shell returns,
+the rest a small manifest block:
+
+| primitive | how |
+|---|---|
+| **transform** | `pure_core` computes; shell emits one message |
+| **filter** | shell returns `:drop` — consume, emit nothing |
+| **split / fan-out** | shell returns `{:emit, [{port, payload}, …]}`, or one out-port wired to many in-ports |
+| **route / branch** | a `router` shell picks which out-port to emit on |
+| **merge (fan-in)** | several edges into one in-port |
+| **aggregate / window** | `[batch]` — `pure_core` reduces the batch (count or time window) |
+| **join** | `[join]` — correlate two+ typed in-ports by a key |
+| **throttle / delay** | `[rate]` / `[delay]` |
+
+Conditional logic lives in node code (a returned port, a `:drop`), never in edge
+predicates — which keeps the topology declarative and machine-checkable. See
+[`guides/concepts.md`](guides/concepts.md) and the
+[manifest reference](guides/manifest-reference.md).
+
 ## Effects: mock by default, real adapters opt-in
 
 Nodes call a backend-agnostic facade (`Bloccs.Effects.HTTP.post/3`,
@@ -269,8 +291,8 @@ compose, and structural coverage is real. See
 ## Out of scope for v0.1
 
 Phoenix LiveView canvas (v0.3+) · MCP server (v0.2) · Pro / encrypted packages
-(private repo, post-v0.1) · polyglot `pure_core` · multi-input nodes (one input
-port per node in v0.1) · cyclic networks (v0.1 is DAG-only) · escript-packaged
+(private repo, post-v0.1) · polyglot `pure_core` · cyclic networks (DAG-only;
+feedback loops are a deadlock-safety design still on the roadmap) · escript-packaged
 binary · full Dialyzer-level static effect proof · durable persistence.
 
 ## License
