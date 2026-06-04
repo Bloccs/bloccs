@@ -155,8 +155,8 @@ enriched = { schema = "EnrichedEvent@1" }
 http = { allow = ["enrichment.local"], methods = ["GET"] }
 
 [contract]
-pure_core    = "Events.Nodes.Enrich.transform/2"
-effect_shell = "Events.Nodes.Enrich.execute/2"
+pure_core    = "MyApp.Nodes.Enrich.transform/2"
+effect_shell = "MyApp.Nodes.Enrich.execute/2"
 retry        = { strategy = "exponential", max = 2, on = ["timeout"], base_ms = 50 }
 timeout_ms   = 3000
 idempotency  = { key = "id" }
@@ -268,7 +268,7 @@ A graded ladder under [`examples/`](https://github.com/Bloccs/bloccs/tree/main/e
   zero setup.
 - [`examples/events`](https://github.com/Bloccs/bloccs/tree/main/examples/events) — the flagship: a webhook/event processor
   showing typed edges, HTTP + DB effects, retry, timeout, idempotency, branching,
-  fan-out, and coverage (`mix events.demo`).
+  fan-out, and coverage (the `events.demo` task).
 - [`examples/real_backend`](https://github.com/Bloccs/bloccs/tree/main/examples/real_backend) — the same shape against real
   HTTP (Req) + SQLite (Ecto) (`mix price_watch.demo`).
 

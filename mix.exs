@@ -93,6 +93,13 @@ defmodule Bloccs.MixProject do
       source_url: @source_url,
       source_ref: "v#{@version}",
       assets: %{"assets" => "assets"},
+      # Document only the library's own modules. Examples (`examples/*/lib`) are
+      # compiled in dev/test via elixirc_paths but are NOT in the Hex package, so
+      # this keeps local `mix docs` equivalent to the published docs.
+      filter_modules: fn mod, _meta ->
+        name = inspect(mod)
+        String.starts_with?(name, "Bloccs") or String.starts_with?(name, "Mix.Tasks.Bloccs")
+      end,
       extras: [
         {"README.md", [title: "bloccs"]},
         "guides/concepts.md",

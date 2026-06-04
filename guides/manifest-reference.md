@@ -98,8 +98,8 @@ regardless of `on`.
 
 ```toml
 [contract]
-pure_core    = "Events.Nodes.Enrich.transform/2"
-effect_shell = "Events.Nodes.Enrich.execute/2"
+pure_core    = "MyApp.Nodes.Enrich.transform/2"
+effect_shell = "MyApp.Nodes.Enrich.execute/2"
 timeout_ms   = 3000
 idempotency  = { key = "id" }
 retry        = { strategy = "exponential", max = 2, on = ["timeout"], base_ms = 50 }
