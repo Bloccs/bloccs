@@ -82,7 +82,7 @@ defmodule Bloccs.MixProject do
         "GitHub" => @source_url,
         "Website" => "https://bloccs.io"
       },
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs guides)
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs guides assets)
     ]
   end
 
@@ -91,8 +91,9 @@ defmodule Bloccs.MixProject do
       main: "readme",
       source_url: @source_url,
       source_ref: "v#{@version}",
+      assets: %{"assets" => "assets"},
       extras: [
-        "README.md",
+        {"README.md", [title: "bloccs"]},
         "guides/concepts.md",
         "guides/getting-started.md",
         "guides/manifest-reference.md",

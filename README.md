@@ -1,8 +1,21 @@
-# bloccs
+<p align="center">
+  <a href="https://bloccs.io">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/bloccs-logo-dark.png">
+      <img alt="Bloccs" src="assets/bloccs-logo-light.png" width="360">
+    </picture>
+  </a>
+</p>
 
-**Typed, supervised dataflow on the BEAM.** You describe a graph of processing
-stages as TOML; bloccs type-checks the wiring, enforces what each stage is
-allowed to do, and compiles it to a Broadway/GenStage supervision tree.
+<p align="center"><strong>Typed, supervised dataflow on the BEAM.</strong></p>
+
+You describe a graph of processing stages as TOML; bloccs type-checks the
+wiring, enforces what each stage is allowed to do, and compiles it to a
+Broadway/GenStage supervision tree.
+
+<p align="center">
+  <img width="880" alt="The events example — a webhook processor: ingest → validate → enrich → route, fanning out to persist and notify, dead-lettering unknown event types" src="assets/events-hero.png">
+</p>
 
 ## Why bloccs?
 
@@ -175,6 +188,10 @@ walkthrough that writes a node by hand, see
 (node, port, effect, schema, …) see [`guides/concepts.md`](guides/concepts.md).
 
 ## The generated runtime
+
+<p align="center">
+  <img width="900" alt="From file to running system: the .bloccs manifest is the source of truth, the diagram is a view of it, and the Broadway/OTP supervision tree is the compiled output" src="assets/concept-manifest-to-tree.png">
+</p>
 
 `mix bloccs.compile` reads the manifests and emits a Broadway-based supervision
 tree — one stage per node, a router for edges, a producer for each inbound port.
