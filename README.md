@@ -289,6 +289,31 @@ work that must survive restarts, put Oban or a broker at the edges. Full
 comparison against Broadway, Oban, Reactor, Temporal, LangGraph, and plain
 GenServers: [`guides/comparison.md`](guides/comparison.md).
 
+## Prior art
+
+Flow-based programming on the BEAM isn't new. Anton Mishchuk's lineage —
+[Flowex](https://github.com/antonmi/flowex) → [ALF](https://github.com/antonmi/ALF)
+→ [Strom](https://github.com/antonmi/strom) / [Kraken](https://github.com/antonmi/kraken)
+— spent years establishing that the actor model and GenStage make the BEAM a natural
+home for FBP, and Kraken reached the same "graph-as-data + declarative adapters" idea
+bloccs builds on. bloccs owes that groundwork.
+
+The difference is the guarantees, not the shape:
+
+- **Compile-time contracts.** Edges are schema-checked and effects are
+  capability-checked *before* the network runs; that lineage validates (or trusts) at
+  runtime.
+- **Reviewable output.** bloccs emits the Broadway supervision tree as real `.ex`
+  source you can read and diff. ALF interprets a runtime DSL; Kraken compiles JSON to
+  modules at runtime. A bloccs network is something you can `git diff`.
+- **A settled substrate.** bloccs commits to Broadway; the lineage moved between
+  GenStage and plain streams.
+
+**What bloccs is _not_:** a runtime DSL (the manifest is compiled ahead of time, not
+interpreted), a data-ingestion pipeline (that's Broadway — which bloccs generates), a
+visual builder (the file is canonical; a canvas is a view), or durable (put Oban or a
+broker at the edges for work that must survive restarts).
+
 ## Status
 
 **v0.1 — pre-release.** Not yet on Hex; APIs may change before the first
