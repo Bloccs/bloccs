@@ -9,20 +9,24 @@ This page is the catalogue — what each primitive does and how to declare it. F
 the field-by-field manifest spec see the [manifest reference](manifest-reference.md);
 for the ideas behind them, [Core concepts](concepts.md).
 
-| | primitive | what it does | declared via |
-|---|---|---|---|
-| <img src="../assets/glyph-node.png" width="34"> | **Transform** | compute a result, emit one message | `kind = "transform"` |
-| <img src="../assets/glyph-source.png" width="34"> | **Source** | the network's entry — a node on an exposed in-port | `[expose].in` |
-| <img src="../assets/glyph-sink.png" width="34"> | **Sink** | the network's exit — usually an egress effect | `[expose].out` |
-| <img src="../assets/glyph-node-effect.png" width="34"> | **Effectful node** | may touch the world, only through what it declares | `[effects]` |
-| <img src="../assets/glyph-filter.png" width="34"> | **Filter** | drop a message, emit nothing | shell returns `:drop` |
-| <img src="../assets/glyph-split.png" width="34"> | **Split / fan-out / route** | many outputs from one node | shell returns `{:emit, […]}` |
-| <img src="../assets/glyph-merge.png" width="34"> | **Merge** | several edges into one in-port (fan-in) | wiring |
-| <img src="../assets/glyph-batch.png" width="34"> | **Batch** | reduce a count/time window of messages | `[batch]` |
-| <img src="../assets/glyph-join.png" width="34"> | **Join** | correlate distinct typed inputs by a key | `[join]` |
-| <img src="../assets/glyph-throttle.png" width="34"> | **Throttle** | cap delivery rate | `[rate]` |
-| <img src="../assets/glyph-delay.png" width="34"> | **Delay** | time-shift each message | `[delay]` |
-| <img src="../assets/glyph-subgraph.png" width="34"> | **Subgraph** | reuse a whole network as a node | `[nodes]` `use` |
+![The bloccs notation — hexagon glyphs for node, source, sink, split, merge, filter, batch, join, throttle, delay, and subgraph; a node that declares an effect carries a badge](../assets/bloccs-notation.png)
+
+| primitive | what it does | declared via |
+|---|---|---|
+| **Transform** | compute a result, emit one message | `kind = "transform"` |
+| **Source** | the network's entry — a node on an exposed in-port | `[expose].in` |
+| **Sink** | the network's exit — usually an egress effect | `[expose].out` |
+| **Effectful node** | may touch the world, only through what it declares | `[effects]` |
+| **Filter** | drop a message, emit nothing | shell returns `:drop` |
+| **Split / fan-out / route** | many outputs from one node | shell returns `{:emit, […]}` |
+| **Merge** | several edges into one in-port (fan-in) | wiring |
+| **Batch** | reduce a count/time window of messages | `[batch]` |
+| **Join** | correlate distinct typed inputs by a key | `[join]` |
+| **Throttle** | cap delivery rate | `[rate]` |
+| **Delay** | time-shift each message | `[delay]` |
+| **Subgraph** | reuse a whole network as a node | `[nodes]` `use` |
+
+Each primitive's glyph appears with its section below.
 
 ## The node and its boundaries
 
