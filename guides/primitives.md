@@ -9,24 +9,20 @@ This page is the catalogue — what each primitive does and how to declare it. F
 the field-by-field manifest spec see the [manifest reference](manifest-reference.md);
 for the ideas behind them, [Core concepts](concepts.md).
 
-![The bloccs notation — hexagon glyphs for node, source, sink, split, merge, filter, batch, join, throttle, delay, and subgraph; a node that declares an effect carries a badge](../assets/bloccs-notation.png)
-
-| primitive | what it does | declared via |
-|---|---|---|
-| **Transform** | compute a result, emit one message | `kind = "transform"` |
-| **Source** | the network's entry — a node on an exposed in-port | `[expose].in` |
-| **Sink** | the network's exit — usually an egress effect | `[expose].out` |
-| **Effectful node** | may touch the world, only through what it declares | `[effects]` |
-| **Filter** | drop a message, emit nothing | shell returns `:drop` |
-| **Split / fan-out / route** | many outputs from one node | shell returns `{:emit, […]}` |
-| **Merge** | several edges into one in-port (fan-in) | wiring |
-| **Batch** | reduce a count/time window of messages | `[batch]` |
-| **Join** | correlate distinct typed inputs by a key | `[join]` |
-| **Throttle** | cap delivery rate | `[rate]` |
-| **Delay** | time-shift each message | `[delay]` |
-| **Subgraph** | reuse a whole network as a node | `[nodes]` `use` |
-
-Each primitive's glyph appears with its section below.
+| | primitive | what it does | declared via |
+|---|---|---|---|
+| ![](../assets/glyph-node.png) | **Transform** | compute a result, emit one message | `kind = "transform"` |
+| ![](../assets/glyph-source.png) | **Source** | the network's entry — a node on an exposed in-port | `[expose].in` |
+| ![](../assets/glyph-sink.png) | **Sink** | the network's exit — usually an egress effect | `[expose].out` |
+| ![](../assets/glyph-node-effect.png) | **Effectful node** | may touch the world, only through what it declares | `[effects]` |
+| ![](../assets/glyph-filter.png) | **Filter** | drop a message, emit nothing | shell returns `:drop` |
+| ![](../assets/glyph-split.png) | **Split / fan-out / route** | many outputs from one node | shell returns `{:emit, […]}` |
+| ![](../assets/glyph-merge.png) | **Merge** | several edges into one in-port (fan-in) | wiring |
+| ![](../assets/glyph-batch.png) | **Batch** | reduce a count/time window of messages | `[batch]` |
+| ![](../assets/glyph-join.png) | **Join** | correlate distinct typed inputs by a key | `[join]` |
+| ![](../assets/glyph-throttle.png) | **Throttle** | cap delivery rate | `[rate]` |
+| ![](../assets/glyph-delay.png) | **Delay** | time-shift each message | `[delay]` |
+| ![](../assets/glyph-subgraph.png) | **Subgraph** | reuse a whole network as a node | `[nodes]` `use` |
 
 ## The node and its boundaries
 
