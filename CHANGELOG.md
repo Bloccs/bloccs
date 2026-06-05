@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Relicensed from MIT to Apache License 2.0** (adds an explicit patent grant).
+  Applies to this and future releases; previously published versions remain under
+  their original MIT terms.
+
 ## [0.2.0] — 2026-06-05
 
 ### Added

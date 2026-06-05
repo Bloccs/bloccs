@@ -79,14 +79,14 @@ defmodule Bloccs.MixProject do
   defp package do
     [
       maintainers: ["Allan MacGregor"],
-      licenses: ["MIT"],
+      licenses: ["Apache-2.0"],
       links: %{
         "GitHub" => @source_url,
         "Website" => "https://bloccs.io"
       },
       # Ship the rendered PNGs (the README + hexdocs use them); the editable
       # source SVGs stay in the repo but are not packaged.
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs guides assets/*.png)
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE NOTICE .formatter.exs guides assets/*.png)
     ]
   end
 
