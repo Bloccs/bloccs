@@ -7,6 +7,9 @@ defmodule Bloccs.Application do
   def start(_type, _args) do
     children = [
       {Registry, keys: :unique, name: Bloccs.Registry},
+      # Running networks register themselves here at boot (see Bloccs.Discovery)
+      # so introspection tools can enumerate them without scanning the tree.
+      {Registry, keys: :unique, name: Bloccs.NetworkRegistry},
       Bloccs.Idempotency,
       Bloccs.Router,
       Bloccs.Join
