@@ -6,11 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-05
+
+### Added
+
+- **`Bloccs.Inspect` — opt-in payload capture.** Off by default. When enabled,
+  the runtime attaches a rendered, **bounded**, **redacted** snapshot of each
+  emitted payload to the `[:bloccs, :emit]` telemetry event under the new
+  `:payload` metadata key (a string; `nil` when disabled), so observability tools
+  (e.g. the `bloccs_web` Messages feed) can show message contents without holding
+  the live term.
+
+  ```elixir
+  config :bloccs, :inspect,
+    enabled: true,
+    max_bytes: 512,
+    redact: [:password, :token, :secret, :authorization]
+  ```
+
+  Redaction matches map keys by name (atom or string) at any depth; structs keep
+  their type.
+
 ### Changed
 
 - **Relicensed from MIT to Apache License 2.0** (adds an explicit patent grant).
-  Applies to this and future releases; previously published versions remain under
-  their original MIT terms.
+  Applies to this and future releases; previously published versions (≤ 0.2.0)
+  remain under their original MIT terms.
 
 ## [0.2.0] — 2026-06-05
 

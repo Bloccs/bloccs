@@ -59,10 +59,18 @@ defmodule Bloccs.Router do
     targets = lookup(network_id, from_node, from_port)
 
     # Trace/coverage signal: this out-port emitted, and each edge was traversed.
+    # `:payload` carries an opt-in, bounded, redacted snapshot for observability
+    # (nil unless `config :bloccs, :inspect, enabled: true` — see `Bloccs.Inspect`).
     :telemetry.execute(
       [:bloccs, :emit],
       %{targets: length(targets)},
-      %{network: network_id, from_node: from_node, from_port: from_port, targets: targets}
+      %{
+        network: network_id,
+        from_node: from_node,
+        from_port: from_port,
+        targets: targets,
+        payload: Bloccs.Inspect.capture(payload)
+      }
     )
 
     failures =
