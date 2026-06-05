@@ -216,9 +216,10 @@ the rest a small manifest block:
 </p>
 
 Conditional logic lives in node code (a returned port, a `:drop`), never in edge
-predicates — which keeps the topology declarative and machine-checkable. See
-[`guides/concepts.md`](guides/concepts.md) and the
-[manifest reference](guides/manifest-reference.md).
+predicates — which keeps the topology declarative and machine-checkable. The
+[primitives reference](guides/primitives.md) catalogues each one (glyph, what it
+does, how to declare it); see also [`guides/concepts.md`](guides/concepts.md) and
+the [manifest reference](guides/manifest-reference.md).
 
 ### The generated runtime
 

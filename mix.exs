@@ -108,6 +108,7 @@ defmodule Bloccs.MixProject do
         {"README.md", [title: "bloccs"]},
         "guides/concepts.md",
         "guides/getting-started.md",
+        "guides/primitives.md",
         "guides/manifest-reference.md",
         "guides/effect-adapters.md",
         "guides/comparison.md",
