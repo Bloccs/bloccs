@@ -1,5 +1,11 @@
 defmodule Bloccs.Join do
   @moduledoc """
+  > #### Runtime internals {: .info}
+  >
+  > Infrastructure called by compiler-generated pipelines — not part of the
+  > stable user API. You drive this through manifests, not by calling it directly;
+  > signatures may change between minor versions.
+
   Correlation buffer for `[join]` nodes — infrastructure, like `Bloccs.Idempotency`.
 
   A join node has two or more in-ports carrying distinct schemas. Each in-port

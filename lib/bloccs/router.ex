@@ -1,5 +1,11 @@
 defmodule Bloccs.Router do
   @moduledoc """
+  > #### Runtime internals {: .info}
+  >
+  > Infrastructure called by compiler-generated pipelines — not part of the
+  > stable user API. You drive this through manifests, not by calling it directly;
+  > signatures may change between minor versions.
+
   Routes outbound emits from compiled nodes to the input producers of their
   downstream targets.
 

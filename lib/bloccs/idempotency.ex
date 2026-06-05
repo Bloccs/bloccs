@@ -1,5 +1,11 @@
 defmodule Bloccs.Idempotency do
   @moduledoc """
+  > #### Runtime internals {: .info}
+  >
+  > Infrastructure called by compiler-generated pipelines — not part of the
+  > stable user API. You drive this through manifests, not by calling it directly;
+  > signatures may change between minor versions.
+
   Tracks which idempotency keys a node has already processed, so a node
   declaring `[contract].idempotency = { key = "request_id" }` drops duplicate
   deliveries instead of re-running its effects.

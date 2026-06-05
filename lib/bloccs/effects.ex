@@ -7,7 +7,10 @@ defmodule Bloccs.Effects do
   out-of-scope calls — that's the runtime half of the "declared capabilities"
   guarantee. The compile-time half lives in `Bloccs.Node` (AST warning).
 
-  v0.1 ships only mock backends. Real HTTP / DB / SMTP adapters arrive in v0.2.
+  Mock backends are the default (tests stay hermetic); real HTTP
+  (`Bloccs.Effects.HTTP.Req`) and DB (`Bloccs.Effects.DB.Ecto`) adapters are
+  opt-in via config, with `:req` / Ecto as optional deps. See
+  `Bloccs.Effects.HTTP` and `Bloccs.Effects.DB` for the behaviours.
   """
 
   alias Bloccs.Manifest.Node

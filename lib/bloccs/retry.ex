@@ -1,5 +1,11 @@
 defmodule Bloccs.Retry do
   @moduledoc """
+  > #### Runtime internals {: .info}
+  >
+  > Infrastructure called by compiler-generated pipelines — not part of the
+  > stable user API. You drive this through manifests, not by calling it directly;
+  > signatures may change between minor versions.
+
   Retry policy evaluation for the runtime.
 
   Pure decision functions over a node's `[contract].retry` declaration:

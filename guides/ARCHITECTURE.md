@@ -104,9 +104,10 @@ capability guarantee.
 ## The composition: a network
 
 A network manifest is a TOML file declaring `[nodes]` (each `use`-ing a node
-manifest), `[[edges]]` (a list of wires), `[expose]` (port renaming for use
-as a subgraph — v0.1 stores but doesn't consume), `[supervision]` (strategy
-+ restart policy), and `[deploy]` (per-node concurrency overrides).
+manifest), `[[edges]]` (a list of wires), `[expose]` (maps the network's public
+ports for use as a subgraph, and resolves the entry/exit ports for
+`mix bloccs.run`), `[supervision]` (strategy + restart policy), and `[deploy]`
+(per-node concurrency overrides).
 
 Parser produces a `%Bloccs.Manifest.Network{}` with every referenced node
 manifest loaded recursively. The validator then runs all per-node checks
@@ -239,6 +240,9 @@ and a replayed id is deduped by the enrich node's idempotency.
 
 ## Shipped since the initial v0.1 cut
 
+- **Flow primitives** — filter + multi-emit (`:drop` / `{:emit, [...]}`), merge
+  (fan-in), `[batch]` windows, `[join]` (multi-input correlation by key), and
+  `[rate]` / `[delay]`.
 - **Subgraph composition** — a `[nodes]` entry may `use` a network manifest; the
   parser flattens it into namespaced leaf nodes.
 - **`.bloccs-trace` recording + real coverage** — `Bloccs.Trace` records a run
@@ -253,8 +257,6 @@ and a replayed id is deduped by the enrich node's idempotency.
   separate private repo.
 - **Polyglot `pure_core`** (HTTP / WASM sidecar refs) — opens up non-BEAM
   cores for the optimization-camp interop story.
-- **Multi-input nodes** — a node is currently limited to a single input port
-  (the compiler emits one producer per node).
 - **Cyclic networks** — v0.1 is DAG-only; cycles unblock the
   self-reflection/iterative-refinement patterns the ACG literature
   catalogues.
