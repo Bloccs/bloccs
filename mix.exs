@@ -1,7 +1,7 @@
 defmodule Bloccs.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
   @source_url "https://github.com/Bloccs/bloccs"
 
   def project do
@@ -86,7 +86,8 @@ defmodule Bloccs.MixProject do
       },
       # Ship the rendered PNGs (the README + hexdocs use them); the editable
       # source SVGs stay in the repo but are not packaged.
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE NOTICE .formatter.exs guides assets/*.png)
+      files:
+        ~w(lib mix.exs README.md CHANGELOG.md LICENSE NOTICE .formatter.exs guides assets/*.png)
     ]
   end
 
@@ -146,7 +147,8 @@ defmodule Bloccs.MixProject do
           Bloccs.Coverage,
           Bloccs.Introspect,
           Bloccs.Introspect.Network,
-          Bloccs.Discovery
+          Bloccs.Discovery,
+          Bloccs.Inspect
         ],
         "Mix tasks": [~r/^Mix\.Tasks\.Bloccs/]
       ]
