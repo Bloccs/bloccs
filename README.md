@@ -67,14 +67,13 @@ point the DB backend at your Ecto repo only if you use them (see
 
 ## Quickstart
 
-```bash
-# scaffold a complete, runnable starter project (mix project + a sample node,
-# its schemas, and a one-node network)
-mix bloccs.new my_flow
-cd my_flow
-mix deps.get
+With the dep in place, the loop is **validate → compile → run** over a network
+manifest. Point the tasks at a `.bloccs` network — write one (see
+[`guides/concepts.md`](guides/concepts.md) and the [manifest
+reference](guides/manifest-reference.md)) or copy `networks/` + `nodes/` from
+[`examples/tour`](https://github.com/Bloccs/bloccs/tree/main/examples/tour):
 
-# validate, compile to a Broadway supervision tree, then run a message through
+```bash
 mix bloccs.validate networks/hello.bloccs
 mix bloccs.compile  networks/hello.bloccs
 mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
@@ -83,8 +82,21 @@ mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
 `mix bloccs.compile` emits real, debuggable `.ex` source under
 `_build/<env>/bloccs_generated/<network>/` — diff it in a PR. For a step-by-step
 walkthrough that writes a node by hand, see
-[`guides/getting-started.md`](guides/getting-started.md); for the vocabulary
-(node, port, effect, schema, …) see [`guides/concepts.md`](guides/concepts.md).
+[`guides/getting-started.md`](guides/getting-started.md).
+
+### Start a new project from scratch
+
+To begin from a runnable example instead, install the `bloccs.new` generator as a
+Mix archive and scaffold a project — it wires the dep, a sample node and its
+schemas, and a one-node network:
+
+```bash
+mix archive.install hex bloccs   # makes `mix bloccs.new` available
+mix bloccs.new my_flow
+cd my_flow
+mix deps.get
+mix bloccs.run networks/hello.bloccs --message '{"name": "ada"}'
+```
 
 ## Typed edges and scoped effects
 
