@@ -51,6 +51,41 @@ LLMs](#legible-to-humans-and-llms)).
 > rather than maintained by hand. The next section shows the two checks that
 > aren't possible with plain Broadway.
 
+## Install
+
+```elixir
+def deps do
+  [{:bloccs, "~> 0.1"}]
+end
+```
+
+bloccs is not on Hex yet (see [Status](#status)); until the first release, depend
+on it from git: `{:bloccs, github: "Bloccs/bloccs"}`. The effect adapters are
+bring-your-own and opt-in — add `{:req, "~> 0.5"}` for the real HTTP backend and
+point the DB backend at your Ecto repo only if you use them (see
+[`guides/effect-adapters.md`](guides/effect-adapters.md)).
+
+## Quickstart
+
+```bash
+# scaffold a complete, runnable starter project (mix project + a sample node,
+# its schemas, and a one-node network)
+mix bloccs.new my_flow
+cd my_flow
+mix deps.get
+
+# validate, compile to a Broadway supervision tree, then run a message through
+mix bloccs.validate networks/hello.bloccs
+mix bloccs.compile  networks/hello.bloccs
+mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
+```
+
+`mix bloccs.compile` emits real, debuggable `.ex` source under
+`_build/<env>/bloccs_generated/<network>/` — diff it in a PR. For a step-by-step
+walkthrough that writes a node by hand, see
+[`guides/getting-started.md`](guides/getting-started.md); for the vocabulary
+(node, port, effect, schema, …) see [`guides/concepts.md`](guides/concepts.md).
+
 ## Typed edges and scoped effects
 
 This is the part you can't get from hand-wired Elixir. Both examples below are
@@ -103,30 +138,6 @@ warning: bloccs: effect :http used in effect_shell but not declared in
 Typed edges and capability-scoped effects are the two guarantees that make a
 bloccs graph safer than the same graph hand-wired.
 
-## Legible to humans and LLMs
-
-A bloccs network is a small declarative artifact: the topology is a TOML file,
-and each node is a manifest plus two functions (a pure core and an effect
-shell). The thing you *review* stays small even when an assistant writes most of
-the implementation.
-
-- **You review the graph, not the glue.** A change to the flow is a diff to a
-  `.bloccs` file — which ports moved, which edge appeared — not a re-read of
-  regenerated supervisor and pipeline code. The generated `.ex` is there to
-  inspect when you want it, but the manifest is what you read.
-- **A change's blast radius is one node.** Each node is a bounded unit: a
-  manifest, a `pure_core`, an effect shell. An assistant can add or alter a node
-  without reaching into the rest of the tree.
-- **The boundaries are machine-checked, so you don't have to take the code's
-  word for it.** A mis-wired edge is rejected at validation time; an undeclared
-  host or table is refused. An LLM can move fast and still cannot connect
-  mismatched stages or smuggle in an unscoped side effect — the compiler stops
-  it before it runs.
-
-So you can hand the repetitive parts to an assistant and stay in control of the
-*shape* of the system, instead of drowning in generated code you have to audit
-line by line.
-
 ## The manifests
 
 Two kinds of TOML manifest:
@@ -166,68 +177,12 @@ Each node's implementation is split in two: a **pure core** (no IO, no clock, no
 randomness — easy to test, deterministic) and an **effect shell** that touches
 the world, and only through declared effects.
 
-## Install
+## How it works
 
-```elixir
-def deps do
-  [{:bloccs, "~> 0.1"}]
-end
-```
+What the compiler emits from those manifests, and how each node behaves
+once it's running.
 
-bloccs is not on Hex yet (see [Status](#status)); until the first release, depend
-on it from git: `{:bloccs, github: "Bloccs/bloccs"}`. The effect adapters are
-bring-your-own and opt-in — add `{:req, "~> 0.5"}` for the real HTTP backend and
-point the DB backend at your Ecto repo only if you use them (see
-[`guides/effect-adapters.md`](guides/effect-adapters.md)).
-
-## Quickstart
-
-```bash
-# scaffold a complete, runnable starter project (mix project + a sample node,
-# its schemas, and a one-node network)
-mix bloccs.new my_flow
-cd my_flow
-mix deps.get
-
-# validate, compile to a Broadway supervision tree, then run a message through
-mix bloccs.validate networks/hello.bloccs
-mix bloccs.compile  networks/hello.bloccs
-mix bloccs.run      networks/hello.bloccs --message '{"name": "ada"}'
-```
-
-`mix bloccs.compile` emits real, debuggable `.ex` source under
-`_build/<env>/bloccs_generated/<network>/` — diff it in a PR. For a step-by-step
-walkthrough that writes a node by hand, see
-[`guides/getting-started.md`](guides/getting-started.md); for the vocabulary
-(node, port, effect, schema, …) see [`guides/concepts.md`](guides/concepts.md).
-
-## The generated runtime
-
-<p align="center">
-  <img width="900" alt="From file to running system: the .bloccs manifest is the source of truth, the diagram is a view of it, and the Broadway/OTP supervision tree is the compiled output" src="assets/concept-manifest-to-tree.png">
-</p>
-
-`mix bloccs.compile` reads the manifests and emits a Broadway-based supervision
-tree — one stage per node, a router for edges, a producer for each inbound port.
-Every declared contract is wired into that runtime, not just parsed:
-
-- **Retry** — backed-off re-enqueue (constant / linear / exponential), matched
-  against the failure reason; permanent failures (schema mismatch, capability
-  denial) are never retried.
-- **Timeout** — `timeout_ms` runs the node in a bounded task; overrun fails the
-  message with `:timeout` (retriable).
-- **Idempotency** — reserves the key in-flight (atomic), so concurrent
-  first-deliveries can't both run; released on terminal failure.
-- **Back-pressure** — a bounded `buffer` parks the producer's caller until a
-  consumer drains, instead of dropping.
-- **Observability** — `:telemetry.span([:bloccs, :node], …)` plus `:emit`,
-  `:retry`, `:skipped`, and `:dispatch_error` events (see `Bloccs.Telemetry`).
-  A failed downstream delivery is surfaced (telemetry + a failed message), never
-  silently dropped.
-- **Subgraph composition** — a `[nodes]` entry may `use` a *network* manifest;
-  the parser flattens it into namespaced leaf nodes at parse time.
-
-## Flow primitives
+### Flow primitives
 
 A node's behavior is its ports + contract, not a fixed "type". From those, the
 common dataflow shapes fall out — most are just what the effect shell returns,
@@ -253,7 +208,33 @@ predicates — which keeps the topology declarative and machine-checkable. See
 [`guides/concepts.md`](guides/concepts.md) and the
 [manifest reference](guides/manifest-reference.md).
 
-## Effects: mock by default, real adapters opt-in
+### The generated runtime
+
+<p align="center">
+  <img width="900" alt="From file to running system: the .bloccs manifest is the source of truth, the diagram is a view of it, and the Broadway/OTP supervision tree is the compiled output" src="assets/concept-manifest-to-tree.png">
+</p>
+
+`mix bloccs.compile` reads the manifests and emits a Broadway-based supervision
+tree — one stage per node, a router for edges, a producer for each inbound port.
+Every declared contract is wired into that runtime, not just parsed:
+
+- **Retry** — backed-off re-enqueue (constant / linear / exponential), matched
+  against the failure reason; permanent failures (schema mismatch, capability
+  denial) are never retried.
+- **Timeout** — `timeout_ms` runs the node in a bounded task; overrun fails the
+  message with `:timeout` (retriable).
+- **Idempotency** — reserves the key in-flight (atomic), so concurrent
+  first-deliveries can't both run; released on terminal failure.
+- **Back-pressure** — a bounded `buffer` parks the producer's caller until a
+  consumer drains, instead of dropping.
+- **Observability** — `:telemetry.span([:bloccs, :node], …)` plus `:emit`,
+  `:retry`, `:skipped`, and `:dispatch_error` events (see `Bloccs.Telemetry`).
+  A failed downstream delivery is surfaced (telemetry + a failed message), never
+  silently dropped.
+- **Subgraph composition** — a `[nodes]` entry may `use` a *network* manifest;
+  the parser flattens it into namespaced leaf nodes at parse time.
+
+### Effects: mock by default, real adapters opt-in
 
 Nodes call a backend-agnostic facade (`Bloccs.Effects.HTTP.post/3`,
 `DB.insert/3`, …). The mock backends are the default (tests stay hermetic); the
@@ -273,6 +254,40 @@ your own backend by implementing the `Bloccs.Effects.HTTP` / `DB` behaviour. See
 hitting real HTTP + SQLite (zero external services) lives in
 [`examples/real_backend`](https://github.com/Bloccs/bloccs/tree/main/examples/real_backend).
 
+### CLI (Mix tasks)
+
+- `mix bloccs.new <name>` — scaffold a new project
+- `mix bloccs.validate <file>` — schema / contract / DAG checks on a node or network
+- `mix bloccs.compile <network>` — emit the Broadway supervision tree
+- `mix bloccs.run <network> --message <json> [--trace <out>]` — start the tree,
+  feed a message, optionally record a `.bloccs-trace`
+- `mix bloccs.coverage <network> [--message <json> | --trace <file>]` — real
+  structural coverage (every in-port, out-port, and edge) from a recorded run
+
+### Legible to humans and LLMs
+
+A bloccs network is a small declarative artifact: the topology is a TOML file,
+and each node is a manifest plus two functions (a pure core and an effect
+shell). The thing you *review* stays small even when an assistant writes most of
+the implementation.
+
+- **You review the graph, not the glue.** A change to the flow is a diff to a
+  `.bloccs` file — which ports moved, which edge appeared — not a re-read of
+  regenerated supervisor and pipeline code. The generated `.ex` is there to
+  inspect when you want it, but the manifest is what you read.
+- **A change's blast radius is one node.** Each node is a bounded unit: a
+  manifest, a `pure_core`, an effect shell. An assistant can add or alter a node
+  without reaching into the rest of the tree.
+- **The boundaries are machine-checked, so you don't have to take the code's
+  word for it.** A mis-wired edge is rejected at validation time; an undeclared
+  host or table is refused. An LLM can move fast and still cannot connect
+  mismatched stages or smuggle in an unscoped side effect — the compiler stops
+  it before it runs.
+
+So you can hand the repetitive parts to an assistant and stay in control of the
+*shape* of the system, instead of drowning in generated code you have to audit
+line by line.
+
 ## Examples
 
 A graded ladder under [`examples/`](https://github.com/Bloccs/bloccs/tree/main/examples) — see [`examples/README.md`](https://github.com/Bloccs/bloccs/blob/main/examples/README.md):
@@ -286,16 +301,6 @@ A graded ladder under [`examples/`](https://github.com/Bloccs/bloccs/tree/main/e
 - [`examples/real_backend`](https://github.com/Bloccs/bloccs/tree/main/examples/real_backend) — the same shape against real
   HTTP (Req) + SQLite (Ecto) (`mix price_watch.demo`).
 
-## CLI (Mix tasks)
-
-- `mix bloccs.new <name>` — scaffold a new project
-- `mix bloccs.validate <file>` — schema / contract / DAG checks on a node or network
-- `mix bloccs.compile <network>` — emit the Broadway supervision tree
-- `mix bloccs.run <network> --message <json> [--trace <out>]` — start the tree,
-  feed a message, optionally record a `.bloccs-trace`
-- `mix bloccs.coverage <network> [--message <json> | --trace <file>]` — real
-  structural coverage (every in-port, out-port, and edge) from a recorded run
-
 ## How it compares
 
 bloccs **generates** Broadway — it isn't a competitor to it. Reach for Broadway
@@ -307,7 +312,7 @@ work that must survive restarts, put Oban or a broker at the edges. Full
 comparison against Broadway, Oban, Reactor, Temporal, LangGraph, and plain
 GenServers: [`guides/comparison.md`](guides/comparison.md).
 
-## Prior art
+### Prior art
 
 Flow-based programming on the BEAM isn't new. Anton Mishchuk's lineage —
 [Flowex](https://github.com/antonmi/flowex) → [ALF](https://github.com/antonmi/ALF)
@@ -356,7 +361,7 @@ The deferred items are listed under [Out of scope](#out-of-scope-for-v01).
 > layer is a roadmap direction, not a v0.1 claim — every example here is ordinary
 > backend dataflow.
 
-## Out of scope for v0.1
+### Out of scope for v0.1
 
 Phoenix LiveView canvas (v0.3+) · MCP server (v0.2) · Pro / encrypted packages
 (private repo, post-v0.1) · polyglot `pure_core` · cyclic networks (DAG-only;
