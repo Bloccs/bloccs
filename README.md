@@ -13,6 +13,12 @@ You describe a graph of processing stages as TOML; bloccs type-checks the
 wiring, enforces what each stage is allowed to do, and compiles it to a
 Broadway/GenStage supervision tree.
 
+> ⚠️ **Experimental — v0.1, pre-release.** bloccs is early and moving fast: the
+> public API and the manifest format may change between releases, it isn't on Hex
+> yet, and it isn't durable (put Oban or a broker at the edges for work that must
+> survive restarts). Great for exploring and prototyping — pin a version and check
+> the [CHANGELOG](CHANGELOG.md) before you upgrade.
+
 <p align="center">
   <img width="880" alt="The events example — a webhook processor: ingest → validate → enrich → route, fanning out to persist and notify, dead-lettering unknown event types" src="assets/events-hero.png">
 </p>
