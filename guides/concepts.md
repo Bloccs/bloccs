@@ -14,6 +14,9 @@ a glance:
 
 ![The bloccs notation: hexagon glyphs for node, source, sink, split, merge, filter, batch, join, throttle, delay, and subgraph; effectful nodes carry a badge](../assets/bloccs-notation.png)
 
+The [primitives reference](primitives.md) catalogues each one — what it does and
+how to declare it.
+
 ## Manifest
 
 A **manifest** is a TOML file. It is the *source of truth* — not a config file

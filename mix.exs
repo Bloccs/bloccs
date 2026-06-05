@@ -97,6 +97,11 @@ defmodule Bloccs.MixProject do
       source_url: @source_url,
       source_ref: "v#{@version}",
       assets: %{"assets" => "assets"},
+      # Keep the glyph thumbnails in the Primitives table small (the source PNGs
+      # are 200px; only that table puts images in cells).
+      before_closing_head_tag: fn _format ->
+        ~s(<style>td img{max-height:2.4em;width:auto;vertical-align:middle}</style>)
+      end,
       # Document only the library's own modules. Examples (`examples/*/lib`) are
       # compiled in dev/test via elixirc_paths but are NOT in the Hex package, so
       # this keeps local `mix docs` equivalent to the published docs.
@@ -108,6 +113,7 @@ defmodule Bloccs.MixProject do
         {"README.md", [title: "bloccs"]},
         "guides/concepts.md",
         "guides/getting-started.md",
+        "guides/primitives.md",
         "guides/manifest-reference.md",
         "guides/effect-adapters.md",
         "guides/comparison.md",

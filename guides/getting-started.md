@@ -7,28 +7,18 @@ pure-core/effect-shell, network, edge.
 
 > bloccs targets Elixir `~> 1.18` on the BEAM.
 
-## 1. Add the dependency
+## 1. Start a project
 
-```elixir
-# mix.exs
-def deps do
-  [
-    {:bloccs, "~> 0.1"}
-  ]
-end
-```
-
-`:req` (for the real HTTP adapter) and Ecto (for the real DB adapter) are
-*optional* — bloccs ships with mock adapters by default, so you add those only
-when you want real backends. See [Effect adapters](effect-adapters.md).
-
-## 2. Scaffold a project layout
+The quickest start is the scaffolder — it writes a runnable project with bloccs
+wired in, a sample node and its schemas, and a one-node network. Install the
+generator as a Mix archive, then scaffold:
 
 ```bash
+mix archive.install hex bloccs   # makes the `mix bloccs.new` generator available
 mix bloccs.new my_flow
+cd my_flow
+mix deps.get
 ```
-
-This writes a starter tree with one sample node and a one-node network:
 
 ```
 my_flow/
@@ -36,10 +26,25 @@ my_flow/
 └── networks/hello.bloccs    # a network manifest wiring it up
 ```
 
-You can immediately validate and compile what it generated (steps 4–5). The rest
-of this guide builds a node by hand so you see every part.
+You can validate and compile what it generated right away (below).
 
-## 3. Write a node
+**Already have a project?** Add bloccs to its deps instead, and create the
+`nodes/` and `networks/` directories yourself:
+
+```elixir
+# mix.exs
+def deps do
+  [{:bloccs, "~> 0.1"}]
+end
+```
+
+`:req` (for the real HTTP adapter) and Ecto (for the real DB adapter) are
+*optional* — bloccs ships with mock adapters by default, so you add those only
+when you want real backends. See [Effect adapters](effect-adapters.md).
+
+The rest of this guide builds a node by hand so you see every part.
+
+## 2. Write a node
 
 A node is **one manifest + one implementation module**.
 
@@ -117,7 +122,7 @@ end
 
 Call `MyFlow.Schemas.register/0` from your application's `start/2`.
 
-## 4. Validate
+## 3. Validate
 
 ```bash
 mix bloccs.validate nodes/greet.bloccs
@@ -129,7 +134,7 @@ well-shaped, and (for networks) that edges connect real ports with matching
 schemas and form a DAG. Errors are printed with file + section pointers; the task
 exits non-zero on failure.
 
-## 5. Wire a network
+## 4. Wire a network
 
 ```toml
 # networks/greet.bloccs
@@ -163,7 +168,7 @@ mix bloccs.compile  networks/greet.bloccs
 node plus a supervisor. Open them: legible output is a feature, not a
 side effect.
 
-## 6. Run a message through it
+## 5. Run a message through it
 
 ```bash
 mix bloccs.run networks/greet.bloccs --message '{"name": "ada"}'
