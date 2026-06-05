@@ -71,7 +71,9 @@ defmodule Bloccs.MixProject do
   end
 
   defp description do
-    "A typed declarative IR for Agentic Computation Graphs (ACGs) that compiles to a Broadway supervision tree on the BEAM."
+    "Typed, supervised dataflow on the BEAM: describe a graph of processing stages " <>
+      "as TOML and compile it to a Broadway supervision tree, with schema-checked " <>
+      "edges and capability-scoped effects."
   end
 
   defp package do
@@ -82,7 +84,9 @@ defmodule Bloccs.MixProject do
         "GitHub" => @source_url,
         "Website" => "https://bloccs.io"
       },
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs guides assets)
+      # Ship the rendered PNGs (the README + hexdocs use them); the editable
+      # source SVGs stay in the repo but are not packaged.
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs guides assets/*.png)
     ]
   end
 

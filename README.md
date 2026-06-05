@@ -166,6 +166,20 @@ Each node's implementation is split in two: a **pure core** (no IO, no clock, no
 randomness — easy to test, deterministic) and an **effect shell** that touches
 the world, and only through declared effects.
 
+## Install
+
+```elixir
+def deps do
+  [{:bloccs, "~> 0.1"}]
+end
+```
+
+bloccs is not on Hex yet (see [Status](#status)); until the first release, depend
+on it from git: `{:bloccs, github: "Bloccs/bloccs"}`. The effect adapters are
+bring-your-own and opt-in — add `{:req, "~> 0.5"}` for the real HTTP backend and
+point the DB backend at your Ecto repo only if you use them (see
+[`guides/effect-adapters.md`](guides/effect-adapters.md)).
+
 ## Quickstart
 
 ```bash

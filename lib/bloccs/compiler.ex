@@ -1,7 +1,7 @@
 defmodule Bloccs.Compiler do
   @moduledoc """
   Compiles a parsed network manifest into Broadway-based source files written
-  to `_build/bloccs_generated/<network>/`.
+  to `_build/<MIX_ENV>/bloccs_generated/<network>/`.
 
   Two stages:
 

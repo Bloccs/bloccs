@@ -182,9 +182,9 @@ from = "right.out"
 to   = "collect.in"   # merge: both sources feed collect.in
 ```
 
-Note the limit this does *not* lift: a node still has at most one **in-port** in
-v0.1, so this is an undifferentiated merge (one stream), not a *join* that
-correlates two distinct typed inputs — that needs multi-input nodes (roadmap).
+Note what merge is *not*: it's an undifferentiated fan-in (several edges into one
+in-port — one stream), not a *join* that correlates two or more **distinct typed**
+inputs by a key. For that, declare a `[join]` node (see the **Node** section).
 
 ## Subgraph
 

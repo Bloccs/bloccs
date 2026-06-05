@@ -6,33 +6,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added — flow primitives
+## [0.1.0] — 2026-06-05
 
-- **Filter + multi-emit** — the effect shell may return `:drop` (filter — emit
-  nothing) or `{:emit, [{port, payload}, …]}` (split — many messages / ports at
-  once), in addition to the single `{:emit, port, payload}`. A drop emits a
-  `[:bloccs, :node, :dropped]` event.
-- **Merge (fan-in)** — several edges may target one in-port (an undifferentiated,
-  unordered merge); no special construct needed.
-- **Aggregate / batch / window** — a `[batch]` block (`size` / `timeout_ms`)
-  makes a node process messages in windows via Broadway batchers; its `pure_core`
-  receives the list of payloads and reduces them.
-- **Join (multi-input)** — a `[join]` block correlates two or more distinct typed
-  in-ports by a key field (`on`); each in-port compiles to its own pipeline and
-  arrivals are matched in `Bloccs.Join`, with a `deadletter` out-port for partials
-  that exceed `timeout_ms`. This lifts the single-input-port limit for join nodes.
-- **Throttle + delay** — `[rate]` (Broadway producer rate limiting) and `[delay]`
-  (producer time-shift). Debounce is a time-windowed `[batch]`.
-
-### Known limitations
-
-- **Cyclic networks** remain out of scope (DAG-only); feedback loops need a
-  deadlock-safe edge mode still on the roadmap.
-
-## [0.1.0] — unreleased (pre-release)
-
-First pre-release. Not yet published to Hex; APIs may change before `0.1.0` is
-tagged on Hex.
+First public release.
 
 ### Added
 
@@ -55,9 +31,17 @@ tagged on Hex.
   `:telemetry` spans.
 - **Effect capability model** — pure core + effect shell split; four effect axes
   (`http`, `db`, `time`, `random`); declared axes bind to real adapters,
-  undeclared axes bind to a `Denied.Stub` that raises. Mock adapters by default;
-  real `Bloccs.Effects.HTTP.Req` and `Bloccs.Effects.DB.Ecto` behind a config
-  switch, with `:req`/Ecto as optional deps.
+  undeclared axes bind to a denied-capability stub that raises. Mock adapters by
+  default; real `Bloccs.Effects.HTTP.Req` and `Bloccs.Effects.DB.Ecto` behind a
+  config switch, with `:req`/Ecto as optional deps.
+- **Flow primitives** — `:drop` (filter) and `{:emit, [{port, payload}, …]}`
+  (split / multi-emit) effect-shell return shapes alongside the single
+  `{:emit, port, payload}`; **merge** (several edges into one in-port);
+  **`[batch]`** windows (`size` / `timeout_ms`) reduced by `pure_core`;
+  **`[join]`** correlating two or more distinct typed in-ports by a key (`on`) —
+  each in-port compiles to its own pipeline; partials past `timeout_ms`
+  dead-letter; **`[rate]`** throttle and **`[delay]`** time-shift via the Broadway
+  producer. A filtered message emits `[:bloccs, :node, :dropped]`.
 - **Subgraph composition** — a `[nodes]` entry may `use` a network manifest; the
   parser flattens it into namespaced leaf nodes at parse time.
 - **Trace + coverage** — `Bloccs.Trace` records a run from telemetry to a
@@ -69,9 +53,14 @@ tagged on Hex.
 - **Examples** — a graded ladder: `examples/tour` (core concepts, mock effects),
   `examples/events` (the flagship webhook processor — branching, fan-out, retry,
   timeout, idempotency, coverage), and `examples/real_backend` (real HTTP to a
-  local stub + real SQLite, `mix price_watch.demo`).
+  local stub + real SQLite).
 - **Guides** — core concepts, getting started, manifest reference, architecture,
   and effect adapters.
+
+### Known limitations
+
+- **Cyclic networks** are out of scope (DAG-only); feedback loops need a
+  deadlock-safe edge mode still on the roadmap.
 
 [Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Bloccs/bloccs/releases/tag/v0.1.0

@@ -1,12 +1,18 @@
 defmodule Bloccs.Runtime do
   @moduledoc """
+  > #### Runtime internals {: .info}
+  >
+  > Infrastructure called by compiler-generated pipelines — not part of the
+  > stable user API. You drive this through manifests, not by calling it directly;
+  > signatures may change between minor versions.
+
   The execution core invoked from every compiler-emitted Broadway pipeline.
 
   Generated `handle_message/3` is a thin shim that builds a `Config` from the
   node's manifest plus its routing identity and calls `process/2`. Keeping the
   logic here — rather than templated into the codegen string — means inbound
-  schema validation (and, in v0.2, timeout / retry / idempotency / telemetry)
-  are unit-testable as ordinary library code instead of brittle generated text.
+  schema validation, timeout, retry, idempotency, and telemetry are
+  unit-testable as ordinary library code instead of brittle generated text.
 
   The contract with a node implementation:
 
