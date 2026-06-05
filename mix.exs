@@ -1,7 +1,7 @@
 defmodule Bloccs.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "0.2.0"
   @source_url "https://github.com/Bloccs/bloccs"
 
   def project do
@@ -140,7 +140,14 @@ defmodule Bloccs.MixProject do
           Bloccs.Pipeline
         ],
         Effects: [~r/^Bloccs\.Effects/],
-        Observability: [Bloccs.Telemetry, Bloccs.Trace, Bloccs.Coverage],
+        Observability: [
+          Bloccs.Telemetry,
+          Bloccs.Trace,
+          Bloccs.Coverage,
+          Bloccs.Introspect,
+          Bloccs.Introspect.Network,
+          Bloccs.Discovery
+        ],
         "Mix tasks": [~r/^Mix\.Tasks\.Bloccs/]
       ]
     ]

@@ -78,6 +78,40 @@ defmodule Bloccs.Producer do
     end
   end
 
+  @typedoc """
+  A point-in-time snapshot of a producer's queue, for observability.
+
+  `buffer` is the configured maximum (`:unbounded` when the port has no
+  `buffer`); `utilization` is `size / buffer` (0.0 when unbounded).
+  """
+  @type stats :: %{
+          size: non_neg_integer(),
+          buffer: pos_integer() | :unbounded,
+          blocked: non_neg_integer(),
+          pending_demand: non_neg_integer(),
+          utilization: float()
+        }
+
+  @doc """
+  Snapshot a producer's queue state by canonical `name`. A bounded, safe call
+  (5s timeout) — never reach into the process with `:sys`. Returns `:no_producer`
+  if the name isn't registered, `{:error, :timeout}` if the producer is wedged.
+  """
+  @spec stats(atom()) :: {:ok, stats()} | :no_producer | {:error, :timeout}
+  def stats(name) do
+    case Registry.lookup(@registry, name) do
+      [{pid, _}] ->
+        try do
+          {:ok, GenStage.call(pid, :bloccs_stats, 5_000)}
+        catch
+          :exit, _ -> {:error, :timeout}
+        end
+
+      [] ->
+        :no_producer
+    end
+  end
+
   @impl GenStage
   def init(opts) do
     name = Keyword.fetch!(opts, :name)
@@ -130,6 +164,21 @@ defmodule Bloccs.Producer do
 
       {:noreply, [], %{state | blocked: :queue.in({from, payload, meta}, state.blocked)}}
     end
+  end
+
+  @impl GenStage
+  def handle_call(:bloccs_stats, _from, state) do
+    buffer = state.buffer
+
+    stats = %{
+      size: state.size,
+      buffer: buffer || :unbounded,
+      blocked: :queue.len(state.blocked),
+      pending_demand: state.pending_demand,
+      utilization: if(buffer, do: state.size / buffer, else: 0.0)
+    }
+
+    {:reply, stats, [], state}
   end
 
   @impl GenStage

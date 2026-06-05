@@ -6,6 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-05
+
+### Added
+
+- **Introspection API** — a read-only window into running networks, the
+  foundation an observability dashboard (`bloccs_web`) reads. All additive.
+  - `Bloccs.Introspect` — `list_networks/0` (summaries), `network/1` (a
+    normalized `Bloccs.Introspect.Network` with nodes, ports, effects, edges,
+    per-node concurrency, supervision strategy, and exposed ports), `producers/1`,
+    and `producer_state/1`.
+  - `Bloccs.Introspect.glyph/1` — the canonical notation glyph for a node
+    manifest (`:source`, `:sink`, `:split`, `:batch`, `:join`, `:throttle`,
+    `:delay`, `:node_effect`, `:node`), so the notation stays a property of the
+    library rather than being reinvented by each viewer.
+  - `Bloccs.Discovery` — boot-time registration of running networks in a new
+    `Bloccs.NetworkRegistry`, so tools enumerate live networks in O(1) without
+    scanning the supervision tree. Entries are owned by each network's supervisor
+    and clean up automatically when it stops or crashes. The generated supervisor
+    now calls `Bloccs.Discovery.register/2` from `init/1` — **recompile networks
+    built with an older bloccs** (`mix bloccs.compile`) to make them discoverable.
+  - `Bloccs.Producer.stats/1` — a safe, typed snapshot of a producer's queue
+    (`size`, `buffer`, `blocked`, `pending_demand`, `utilization`) via a bounded
+    `GenStage` call, so observers never reach in with `:sys.get_state`.
+  - The generated supervisor gained `__bloccs_introspect__/0` (topology + node→impl
+    + supervision + exposed ports) feeding the API above.
+
 ## [0.1.1] — 2026-06-05
 
 ### Changed
