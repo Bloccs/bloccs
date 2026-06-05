@@ -13,11 +13,11 @@ You describe a graph of processing stages as TOML; bloccs type-checks the
 wiring, enforces what each stage is allowed to do, and compiles it to a
 Broadway/GenStage supervision tree.
 
-> ⚠️ **Experimental — v0.1, pre-release.** bloccs is early and moving fast: the
-> public API and the manifest format may change between releases, it isn't on Hex
-> yet, and it isn't durable (put Oban or a broker at the edges for work that must
-> survive restarts). Great for exploring and prototyping — pin a version and check
-> the [CHANGELOG](CHANGELOG.md) before you upgrade.
+> ⚠️ **Experimental — early and moving fast.** The public API and the manifest
+> format may change between releases, and bloccs isn't durable (put Oban or a
+> broker at the edges for work that must survive restarts). Great for exploring
+> and prototyping — pin a version and check the [CHANGELOG](CHANGELOG.md) before
+> you upgrade.
 
 <p align="center">
   <img width="880" alt="The events example — a webhook processor: ingest → validate → enrich → route, fanning out to persist and notify, dead-lettering unknown event types" src="assets/events-hero.png">
@@ -65,10 +65,9 @@ def deps do
 end
 ```
 
-bloccs is not on Hex yet (see [Status](#status)); until the first release, depend
-on it from git: `{:bloccs, github: "Bloccs/bloccs"}`. The effect adapters are
-bring-your-own and opt-in — add `{:req, "~> 0.5"}` for the real HTTP backend and
-point the DB backend at your Ecto repo only if you use them (see
+Then `mix deps.get`. The effect adapters are bring-your-own and opt-in — add
+`{:req, "~> 0.5"}` for the real HTTP backend and point the DB backend at your Ecto
+repo only if you use them (see
 [`guides/effect-adapters.md`](guides/effect-adapters.md)).
 
 ## Quickstart
@@ -356,37 +355,6 @@ interpreted), a data-ingestion pipeline (that's Broadway — which bloccs genera
 visual builder (the file is canonical; a canvas is a view), or durable (put Oban or a
 broker at the edges for work that must survive restarts).
 
-## Status
-
-**v0.1 — pre-release.** Not yet on Hex; APIs may change before the first
-release. The full **parse → validate → compile → run** loop works end to end, and
-everything the manifests can declare is honored at runtime:
-
-- the **flow primitives** — transform, filter, split / fan-out, route, merge,
-  batch / window, join, throttle, delay (see [Flow primitives](#flow-primitives));
-- **per-node contracts** — retry, timeout, idempotency, bounded-buffer
-  back-pressure, and `:telemetry` spans, wired into the generated tree;
-- **scoped effects** with real HTTP / DB adapters behind a config switch;
-- **subgraph composition** (`use` a network as a node);
-- **trace + real structural coverage** (`mix bloccs.coverage`).
-
-See [`guides/ARCHITECTURE.md`](guides/ARCHITECTURE.md) for the compile pipeline.
-The deferred items are listed under [Out of scope](#out-of-scope-for-v01).
-
-> **A note on the name.** In the design docs you'll see bloccs called an *IR for
-> Agentic Computation Graphs (ACGs)* — the north star is typed, supervised graphs
-> with LLM/tool nodes as first-class stages. Today the engine is the
-> general-purpose, agent-agnostic core: typed dataflow on the BEAM. The "agentic"
-> layer is a roadmap direction, not a v0.1 claim — every example here is ordinary
-> backend dataflow.
-
-### Out of scope for v0.1
-
-Phoenix LiveView canvas (v0.3+) · MCP server (v0.2) · Pro / encrypted packages
-(private repo, post-v0.1) · polyglot `pure_core` · cyclic networks (DAG-only;
-feedback loops are a deadlock-safety design still on the roadmap) · escript-packaged
-binary · full Dialyzer-level static effect proof · durable persistence.
-
 ## License
 
-MIT. Pro extensions ship later in a separate private repo (modeled on Oban Pro).
+Released under the [MIT License](LICENSE).

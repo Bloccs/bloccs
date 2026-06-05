@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-05
+
+### Changed
+
+- Docs: dropped the README Status and "Out of scope" sections (the roadmap now
+  lives in GitHub Projects), corrected the License note to plain MIT (no Pro
+  call-out), and refreshed the post-publish wording now that bloccs is on Hex.
+
 ## [0.1.0] — 2026-06-05
 
 First public release.
@@ -62,5 +70,6 @@ First public release.
 - **Cyclic networks** are out of scope (DAG-only); feedback loops need a
   deadlock-safe edge mode still on the roadmap.
 
-[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Bloccs/bloccs/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Bloccs/bloccs/releases/tag/v0.1.0
