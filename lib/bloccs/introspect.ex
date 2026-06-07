@@ -124,8 +124,9 @@ defmodule Bloccs.Introspect do
     }
   end
 
+  # pure_core / effect_shell are `@enforce_keys` mfa_refs, so the ref is always
+  # present (no nil clause — dialyzer proves it unreachable).
   defp ref(%{module: m, function: f, arity: a}), do: "#{inspect(m)}.#{f}/#{a}"
-  defp ref(_), do: nil
 
   # Primitive configuration declared on the node ([batch]/[join]/[rate]/[delay]).
   defp config(manifest) do
