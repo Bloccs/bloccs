@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-07
+
+### Added
+
+- **`Bloccs.Introspect` now exposes each node's contract and primitive config.**
+  `node_view/1` gained two fields so observability tools can show *what code runs
+  at a node* and *how a primitive is tuned* without re-parsing manifests:
+  - `:contract` — the author's `pure_core` / `effect_shell` refs (as
+    `"Mod.fun/arity"`), plus `timeout_ms`, `retry`, and `idempotency` policy.
+  - `:config` — the primitive block a node declares, as the relevant
+    `Bloccs.Manifest.{Batch,Join,Rate}` struct (or `delay_ms`), `nil` when absent.
+
+  Both are additive; existing `node_view` consumers are unaffected.
+
 ## [0.3.0] — 2026-06-05
 
 ### Added
@@ -123,6 +137,7 @@ First public release.
 - **Cyclic networks** are out of scope (DAG-only); feedback loops need a
   deadlock-safe edge mode still on the roadmap.
 
-[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Bloccs/bloccs/compare/v0.3.0...v0.4.0
 [0.1.1]: https://github.com/Bloccs/bloccs/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Bloccs/bloccs/releases/tag/v0.1.0
