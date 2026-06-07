@@ -6,6 +6,33 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-07
+
+### Added
+
+- **Per-message lineage tracking.** Every message now carries a small lineage in
+  its `Broadway.Message` metadata (never the payload) so a single logical message
+  can be tracked across the hops it takes through a network:
+
+      %{msg_id: id, parents: [id], trace_id: id}
+
+  - `msg_id` — a unique id minted at each emit.
+  - `parents` — the input message id(s) that caused this emit: one for a
+    transform/split, **many** for a batch/join fan-in (a causal DAG).
+  - `trace_id` — root correlation; propagated unchanged on 1:1 and fan-out, and
+    minted fresh on fan-in (a merge is a new logical message; `parents` preserves
+    the cross-trace links).
+
+  A root lineage is minted at external ingress; `Bloccs.Router.dispatch/5`
+  threads it to each downstream producer and the runtime stamps it at every emit
+  site (transform, split, filter, batch, join, join deadletter, retry). Subgraph
+  composition needs no special handling — `use` is flattened into one namespaced
+  network at parse time, so lineage threads across the seam for free.
+
+  The `[:bloccs, :emit]` telemetry metadata gains `:msg_id`, `:parents`,
+  `:trace_id` (additive — existing consumers are unaffected). See the new
+  `Bloccs.Lineage` module.
+
 ## [0.4.0] — 2026-06-07
 
 ### Added
@@ -137,7 +164,8 @@ First public release.
 - **Cyclic networks** are out of scope (DAG-only); feedback loops need a
   deadlock-safe edge mode still on the roadmap.
 
-[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Bloccs/bloccs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Bloccs/bloccs/compare/v0.3.0...v0.4.0
 [0.1.1]: https://github.com/Bloccs/bloccs/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Bloccs/bloccs/releases/tag/v0.1.0
