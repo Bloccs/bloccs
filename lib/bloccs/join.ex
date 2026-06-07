@@ -55,15 +55,19 @@ defmodule Bloccs.Join do
   def register(scope, config), do: GenServer.call(__MODULE__, {:register, scope, config})
 
   @doc """
-  Record an arrival on `port` for join `scope`. Returns `{:complete, payloads}`
-  (a `%{port => payload}` map) once every required in-port has arrived for the
-  arrival's correlation key, `:partial` while still waiting, or `{:error, reason}`
-  (`:no_config` / `:no_key`).
+  Record an arrival on `port` for join `scope`, carrying the arriving message's
+  `lineage` (`Bloccs.Lineage.t/0` or `nil`). Returns `{:complete, payloads,
+  parents}` — a `%{port => payload}` map plus the list of correlated arrivals'
+  lineages (the joined output's parents) — once every required in-port has
+  arrived for the arrival's correlation key; `:partial` while still waiting; or
+  `{:error, reason}` (`:no_config` / `:no_key`).
   """
-  @spec arrive(scope(), atom(), map()) ::
-          {:complete, %{atom() => map()}} | :partial | {:error, :no_config | :no_key}
-  def arrive(scope, port, payload),
-    do: GenServer.call(__MODULE__, {:arrive, scope, port, payload})
+  @spec arrive(scope(), atom(), map(), Bloccs.Lineage.t() | nil) ::
+          {:complete, %{atom() => map()}, [Bloccs.Lineage.t()]}
+          | :partial
+          | {:error, :no_config | :no_key}
+  def arrive(scope, port, payload, lineage \\ nil),
+    do: GenServer.call(__MODULE__, {:arrive, scope, port, payload, lineage})
 
   @doc "Force a sweep synchronously (deadletter/drop expired partials). Test helper."
   @spec sweep_now() :: :ok
@@ -87,13 +91,13 @@ defmodule Bloccs.Join do
     {:reply, :ok, %{state | configs: Map.put(state.configs, scope, config)}}
   end
 
-  def handle_call({:arrive, scope, port, payload}, _from, state) do
+  def handle_call({:arrive, scope, port, payload, lineage}, _from, state) do
     case Map.fetch(state.configs, scope) do
       :error ->
         {:reply, {:error, :no_config}, state}
 
       {:ok, config} ->
-        {:reply, do_arrive(scope, port, payload, config), state}
+        {:reply, do_arrive(scope, port, payload, lineage, config), state}
     end
   end
 
@@ -116,28 +120,30 @@ defmodule Bloccs.Join do
 
   # ---------------- correlation ----------------
 
-  defp do_arrive(scope, port, payload, %{on: on, required: required}) do
+  defp do_arrive(scope, port, payload, lineage, %{on: on, required: required}) do
     case fetch_field(payload, on) do
       :none ->
         {:error, :no_key}
 
       {:ok, key} ->
-        ports = Map.put(current_ports(scope, key), port, payload)
+        %{ports: cur_ports, lineages: cur_lineages} = current_row(scope, key)
+        ports = Map.put(cur_ports, port, payload)
+        lineages = Map.put(cur_lineages, port, lineage)
 
         if MapSet.subset?(required, MapSet.new(Map.keys(ports))) do
           :ets.delete(@table, {scope, key})
-          {:complete, ports}
+          {:complete, ports, lineages |> Map.values() |> Enum.reject(&is_nil/1)}
         else
-          :ets.insert(@table, {{scope, key}, %{ports: ports, ts: now_ms()}})
+          :ets.insert(@table, {{scope, key}, %{ports: ports, lineages: lineages, ts: now_ms()}})
           :partial
         end
     end
   end
 
-  defp current_ports(scope, key) do
+  defp current_row(scope, key) do
     case :ets.lookup(@table, {scope, key}) do
-      [{_, %{ports: ports}}] -> ports
-      [] -> %{}
+      [{_, %{ports: ports} = row}] -> %{ports: ports, lineages: Map.get(row, :lineages, %{})}
+      [] -> %{ports: %{}, lineages: %{}}
     end
   end
 
@@ -147,10 +153,10 @@ defmodule Bloccs.Join do
     now = now_ms()
 
     :ets.tab2list(@table)
-    |> Enum.each(fn {{scope, key}, %{ports: ports, ts: ts}} ->
+    |> Enum.each(fn {{scope, key}, %{ports: ports, ts: ts} = row} ->
       with {:ok, %{timeout_ms: t} = config} when is_integer(t) <- Map.fetch(configs, scope),
            true <- now - ts > t do
-        expire(scope, key, ports, config)
+        expire(scope, key, ports, Map.get(row, :lineages, %{}), config)
         :ets.delete(@table, {scope, key})
       else
         _ -> :ok
@@ -158,7 +164,7 @@ defmodule Bloccs.Join do
     end)
   end
 
-  defp expire({network, node} = _scope, key, ports, %{deadletter: nil}) do
+  defp expire({network, node} = _scope, key, ports, _lineages, %{deadletter: nil}) do
     :telemetry.execute(
       [:bloccs, :join, :timeout],
       %{present: map_size(ports)},
@@ -166,14 +172,16 @@ defmodule Bloccs.Join do
     )
   end
 
-  defp expire({network, node} = _scope, key, ports, %{deadletter: port}) do
+  defp expire({network, node} = _scope, key, ports, lineages, %{deadletter: port}) do
     envelope = %{
       "key" => key,
       "present" => ports |> Map.keys() |> Enum.map(&to_string/1) |> Enum.sort(),
       "payloads" => ports
     }
 
-    _ = Router.dispatch(network, node, port, envelope)
+    # The dead-lettered partial's parents are whichever arrivals did show up.
+    ctx = lineages |> Map.values() |> Enum.reject(&is_nil/1) |> Bloccs.Lineage.merge()
+    _ = Router.dispatch(network, node, port, envelope, ctx)
     :ok
   end
 

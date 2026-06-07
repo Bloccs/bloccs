@@ -36,8 +36,20 @@ defmodule Bloccs.Integration.AggregateTest do
   defp push(id),
     do: Producer.push(Router.producer_name(:aggregate, :rollup, :events), %{"id" => id})
 
-  test "a full count window emits one aggregate covering the whole batch" do
+  test "a full count window emits one aggregate covering the whole batch, with fan-in lineage" do
     Router.register_sink(:aggregate, :collect, :done, self())
+
+    handler = {__MODULE__, make_ref()}
+    test_pid = self()
+
+    :telemetry.attach(
+      handler,
+      [:bloccs, :emit],
+      fn _e, _m, meta, _ -> send(test_pid, {:emit, meta}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
 
     push("e1")
     push("e2")
@@ -47,6 +59,16 @@ defmodule Bloccs.Integration.AggregateTest do
                    1_000
 
     assert Enum.sort(ids) == ["e1", "e2", "e3"]
+
+    # The rollup's emit carries fan-in lineage: three batched inputs => three
+    # parents, a fresh trace, and its own distinct id.
+    assert_receive {:emit, %{from_node: :rollup, parents: parents, trace_id: trace, msg_id: id}},
+                   1_000
+
+    assert length(parents) == 3
+    assert is_integer(trace)
+    assert trace not in parents
+    assert id not in parents
   end
 
   test "a partial window flushes on the batch timeout" do

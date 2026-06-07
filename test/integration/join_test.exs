@@ -55,6 +55,31 @@ defmodule Bloccs.Integration.JoinTest do
                    1_000
   end
 
+  test "the joined record's lineage lists both correlated arrivals (fan-in)" do
+    handler = {__MODULE__, make_ref()}
+    test_pid = self()
+
+    :telemetry.attach(
+      handler,
+      [:bloccs, :emit],
+      fn _e, _m, meta, _ -> send(test_pid, {:emit, meta}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    left(%{"order_id" => "j1", "item" => "book"})
+    right(%{"order_id" => "j1", "amount" => 30})
+
+    # The reconcile node emits the joined record on its `joined` out-port.
+    assert_receive {:emit, %{from_node: :reconcile, parents: parents, trace_id: trace}}, 1_000
+
+    # Fan-in: a matched pair => two parents (left + right) and a fresh trace.
+    assert length(parents) == 2
+    assert is_integer(trace)
+    assert trace not in parents
+  end
+
   test "out-of-order arrivals still match (right before left)" do
     Router.register_sink(:join, :reconcile_sink, :done, self())
 

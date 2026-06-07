@@ -30,8 +30,12 @@ defmodule Bloccs.Telemetry do
 
   - `[:bloccs, :emit]` — a node emitted on an out-port
     - measurements: `%{targets}` (number of downstream edges)
-    - metadata: `%{network, from_node, from_port, targets}` where `targets` is a
-      list of `{to_node, to_port}`
+    - metadata: `%{network, from_node, from_port, targets, payload, msg_id,
+      parents, trace_id}` where `targets` is a list of `{to_node, to_port}`,
+      `payload` is the opt-in `Bloccs.Inspect` snapshot (nil unless enabled), and
+      `msg_id`/`parents`/`trace_id` are the emitted message's `Bloccs.Lineage`
+      (a fresh `msg_id`; `parents` lists the input message ids that caused it —
+      one for a transform/split, many for a batch/join fan-in)
 
   Two additional point-in-time events:
 

@@ -105,8 +105,10 @@ defmodule Bloccs.Runtime do
     )
 
     data = Enum.map(messages, & &1.data)
+    # Fan-in: the aggregate's parents are every message in the batch.
+    ctx = Bloccs.Lineage.merge(Enum.map(messages, &Bloccs.Lineage.of(&1.metadata)))
 
-    case run_and_dispatch(manifest, data, cfg) do
+    case run_and_dispatch(manifest, data, cfg, ctx) do
       :ok ->
         messages
 
@@ -149,12 +151,14 @@ defmodule Bloccs.Runtime do
           join_meta(cfg, port)
         )
 
-        case Bloccs.Join.arrive({cfg.network_id, cfg.local_id}, port, msg.data) do
+        lineage = Bloccs.Lineage.of(msg.metadata)
+
+        case Bloccs.Join.arrive({cfg.network_id, cfg.local_id}, port, msg.data, lineage) do
           :partial ->
             msg
 
-          {:complete, payloads} ->
-            join_emit(msg, payloads, cfg, port)
+          {:complete, payloads, parents} ->
+            join_emit(msg, payloads, parents, cfg, port)
 
           {:error, reason} ->
             Message.failed(msg, {:join_error, reason})
@@ -162,8 +166,11 @@ defmodule Bloccs.Runtime do
     end
   end
 
-  defp join_emit(msg, payloads, %Config{manifest: manifest} = cfg, port) do
-    case run_and_dispatch(manifest, payloads, cfg) do
+  defp join_emit(msg, payloads, parents, %Config{manifest: manifest} = cfg, port) do
+    # Fan-in: the joined output's parents are the correlated arrivals.
+    ctx = Bloccs.Lineage.merge(parents)
+
+    case run_and_dispatch(manifest, payloads, cfg, ctx) do
       :ok ->
         msg
 
@@ -186,8 +193,9 @@ defmodule Bloccs.Runtime do
   end
 
   # Run a node's contract over `data` — a single payload, a list (batch), or a
-  # correlated `%{port => payload}` map (join) — and dispatch the emits.
-  defp run_and_dispatch(manifest, data, cfg) do
+  # correlated `%{port => payload}` map (join) — and dispatch the emits under the
+  # lineage `lineage_ctx` (a fan-in merge for batch/join).
+  defp run_and_dispatch(manifest, data, cfg, lineage_ctx) do
     ctx = Context.new(effects: Effects.bind(manifest), received_at: DateTime.utc_now())
 
     case run_node(manifest, data, ctx) do
@@ -195,7 +203,7 @@ defmodule Bloccs.Runtime do
         :dropped
 
       {:emits, emits} ->
-        case dispatch_all(emits, cfg) do
+        case dispatch_all(emits, cfg, lineage_ctx) do
           [] -> :ok
           failures -> {:dispatch_failed, failures}
         end
@@ -262,8 +270,10 @@ defmodule Bloccs.Runtime do
 
   defp dispatch_emits(emits, msg, cfg, dedup) do
     mark_done(dedup)
+    # Every emit here is caused by this one input message — its children.
+    ctx = Bloccs.Lineage.child(Bloccs.Lineage.of(msg.metadata))
 
-    case dispatch_all(emits, cfg) do
+    case dispatch_all(emits, cfg, ctx) do
       [] ->
         msg
 
@@ -273,10 +283,12 @@ defmodule Bloccs.Runtime do
     end
   end
 
-  # Dispatch each `{port, payload}` and collect any per-edge delivery failures.
-  defp dispatch_all(emits, %Config{} = cfg) do
+  # Dispatch each `{port, payload}` under lineage `ctx` and collect any per-edge
+  # delivery failures. Each `{port, payload}` is a distinct emitted message (its
+  # own msg_id), so a split fans one input out to several tracked children.
+  defp dispatch_all(emits, %Config{} = cfg, ctx) do
     Enum.flat_map(emits, fn {port, payload} ->
-      case Router.dispatch(cfg.network_id, cfg.local_id, port, payload) do
+      case Router.dispatch(cfg.network_id, cfg.local_id, port, payload, ctx) do
         :ok -> []
         {:error, fs} -> fs
       end
@@ -294,7 +306,10 @@ defmodule Bloccs.Runtime do
     if Retry.retriable?(reason, policy, attempt) do
       delay = Retry.backoff_ms(policy, attempt)
       producer = Router.producer_name(cfg.network_id, cfg.local_id, cfg.in_port)
-      Producer.push_after(producer, msg.data, %{bloccs_attempt: attempt + 1}, delay)
+      # Preserve the message's lineage across the retry (it is the same message),
+      # bumping only the attempt count.
+      retry_meta = Map.put(msg.metadata, :bloccs_attempt, attempt + 1)
+      Producer.push_after(producer, msg.data, retry_meta, delay)
       emit(:retry, %{delay_ms: delay, next_attempt: attempt + 1}, cfg, msg, %{reason: reason})
       # Keep the reservation — the scheduled retry will complete or release it.
       msg
@@ -319,8 +334,18 @@ defmodule Bloccs.Runtime do
       node: cfg.local_id,
       in_port: cfg.in_port,
       attempt: attempt(msg),
-      observability: cfg.manifest.observability
+      observability: cfg.manifest.observability,
+      # The input message's id, so node-level events (drop/skip/retry/fail) can be
+      # correlated to a message even when nothing is emitted downstream.
+      msg_id: msg_id(msg)
     }
+  end
+
+  defp msg_id(%Message{metadata: meta}) do
+    case Bloccs.Lineage.of(meta) do
+      %{msg_id: id} -> id
+      _ -> nil
+    end
   end
 
   defp outcome_meta(%Message{status: {:failed, reason}}), do: %{outcome: :failed, reason: reason}

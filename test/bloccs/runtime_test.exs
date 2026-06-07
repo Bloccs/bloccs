@@ -474,6 +474,40 @@ defmodule Bloccs.RuntimeTest do
       assert_receive {:bloccs_sink, :rt_net, :demo, :out_a, %{"which" => "a"}}
       assert_receive {:bloccs_sink, :rt_net, :demo, :out_b, %{"which" => "b"}}
     end
+
+    test "fan-out: each split child inherits the input as parent, distinct ids", %{scfg: scfg} do
+      handler = {__MODULE__, make_ref()}
+      test_pid = self()
+
+      :telemetry.attach(
+        handler,
+        [:bloccs, :emit],
+        fn _e, _m, meta, _ -> send(test_pid, {:emit, meta}) end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+
+      parent = Bloccs.Lineage.root()
+      Runtime.process(msg(%{"split" => true}, %{Bloccs.Lineage.key() => parent}), scfg)
+
+      emits =
+        for _ <- 1..2, into: %{} do
+          assert_receive {:emit, %{from_port: p} = meta}
+          {p, meta}
+        end
+
+      a = emits[:out_a]
+      b = emits[:out_b]
+
+      # Both children are caused by the one input...
+      assert a.parents == [parent.msg_id]
+      assert b.parents == [parent.msg_id]
+      assert a.trace_id == parent.trace_id
+      assert b.trace_id == parent.trace_id
+      # ...but each is its own distinct message.
+      assert a.msg_id != b.msg_id
+    end
   end
 
   describe "process/2 contract violations" do
