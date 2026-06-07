@@ -56,6 +56,42 @@ defmodule Bloccs.Integration.SubgraphTest do
     assert_receive {:bloccs_sink, :app, :"pipe.down", :output, %{"id" => "msg-1"}}, 2_000
   end
 
+  test "a message's lineage chains across every hop, including the subgraph seam" do
+    handler = {__MODULE__, make_ref()}
+    test_pid = self()
+
+    :telemetry.attach(
+      handler,
+      [:bloccs, :emit],
+      fn _e, _m, meta, _ -> send(test_pid, {:emit, meta}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    :ok = Producer.push(Router.producer_name(:app, :head, :start), %{"id" => "trace-me"})
+
+    # One push => one emit per node along head -> pipe.up -> pipe.down. Collect by
+    # node so the assertion doesn't depend on cross-process delivery order.
+    emits =
+      for _ <- 1..3, into: %{} do
+        assert_receive {:emit, %{from_node: n} = meta}, 2_000
+        {n, meta}
+      end
+
+    head = emits[:head]
+    up = emits[:"pipe.up"]
+    down = emits[:"pipe.down"]
+
+    # Each hop's emit is caused by the previous hop's emitted message.
+    assert up.parents == [head.msg_id]
+    assert down.parents == [up.msg_id]
+
+    # One logical message => one trace id the whole way through, across the seam.
+    assert head.trace_id == up.trace_id
+    assert up.trace_id == down.trace_id
+  end
+
   test "a recorded run yields real structural coverage across the composed graph", %{
     network: net
   } do

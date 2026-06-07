@@ -48,6 +48,13 @@ defmodule Bloccs.Router do
   *source* endpoint — sinks observe what a port emitted, regardless of
   whether downstream edges exist.
 
+  The optional `ctx` is the outbound `Bloccs.Lineage` context (`parents` +
+  `trace_id`) computed by the runtime from the input message(s). A fresh
+  `msg_id` is minted for the emitted message and carried to every downstream
+  producer as metadata, so the message is trackable across the next hop. With no
+  `ctx` (the `dispatch/4` form, or a direct call) the emit is stamped as its own
+  root.
+
   Returns `:ok` when every push succeeded, or `{:error, failures}` where
   `failures` is a list of `{endpoint, reason}` for the edges whose push did not
   succeed. Each failure also emits a `[:bloccs, :dispatch, :error]` telemetry
@@ -55,12 +62,23 @@ defmodule Bloccs.Router do
   """
   @spec dispatch(atom(), atom(), atom(), term()) ::
           :ok | {:error, [{endpoint(), :no_producer | {:error, :timeout}}]}
-  def dispatch(network_id, from_node, from_port, payload) do
+  def dispatch(network_id, from_node, from_port, payload),
+    do: dispatch(network_id, from_node, from_port, payload, Bloccs.Lineage.child(nil))
+
+  @spec dispatch(atom(), atom(), atom(), term(), Bloccs.Lineage.ctx()) ::
+          :ok | {:error, [{endpoint(), :no_producer | {:error, :timeout}}]}
+  def dispatch(network_id, from_node, from_port, payload, ctx) do
     targets = lookup(network_id, from_node, from_port)
+
+    # One emitted message, possibly delivered to several edges: mint its lineage
+    # once and carry it to every downstream producer (shared msg_id == one emit).
+    lineage = Bloccs.Lineage.stamp(ctx)
+    meta = %{Bloccs.Lineage.key() => lineage}
 
     # Trace/coverage signal: this out-port emitted, and each edge was traversed.
     # `:payload` carries an opt-in, bounded, redacted snapshot for observability
     # (nil unless `config :bloccs, :inspect, enabled: true` — see `Bloccs.Inspect`).
+    # `:msg_id` / `:parents` / `:trace_id` carry the message's lineage.
     :telemetry.execute(
       [:bloccs, :emit],
       %{targets: length(targets)},
@@ -69,7 +87,10 @@ defmodule Bloccs.Router do
         from_node: from_node,
         from_port: from_port,
         targets: targets,
-        payload: Bloccs.Inspect.capture(payload)
+        payload: Bloccs.Inspect.capture(payload),
+        msg_id: lineage.msg_id,
+        parents: lineage.parents,
+        trace_id: lineage.trace_id
       }
     )
 
@@ -77,7 +98,7 @@ defmodule Bloccs.Router do
       Enum.reduce(targets, [], fn {to_node, to_port} = target, acc ->
         producer = producer_name(network_id, to_node, to_port)
 
-        case Bloccs.Producer.push(producer, payload) do
+        case Bloccs.Producer.push(producer, payload, meta) do
           :ok ->
             acc
 

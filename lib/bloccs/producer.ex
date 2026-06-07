@@ -245,9 +245,12 @@ defmodule Bloccs.Producer do
         {Enum.reverse(acc), queue, demand}
 
       {{:value, {payload, meta}}, rest} ->
+        # Every message that enters a producer gets a lineage: internal hops
+        # already carry one (stamped by Router.dispatch); a bare external push
+        # (meta without lineage) becomes a tracked root here.
         msg = %Broadway.Message{
           data: payload,
-          metadata: meta,
+          metadata: Bloccs.Lineage.ensure(meta),
           acknowledger: {Bloccs.Producer.Acknowledger, :ignored, :ignored}
         }
 
