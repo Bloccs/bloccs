@@ -9,11 +9,17 @@
 
 <p align="center"><strong>Typed, supervised dataflow on the BEAM.</strong></p>
 
+<p align="center">
+  <a href="https://hex.pm/packages/bloccs"><img alt="Hex Version" src="https://img.shields.io/hexpm/v/bloccs.svg"></a>
+  <a href="https://hexdocs.pm/bloccs"><img alt="Hex Docs" src="https://img.shields.io/badge/hex-docs-blue.svg"></a>
+  <a href="https://github.com/Bloccs/bloccs/blob/main/LICENSE"><img alt="Apache 2 License" src="https://img.shields.io/hexpm/l/bloccs.svg"></a>
+</p>
+
 You describe a graph of processing stages as TOML; bloccs type-checks the
 wiring, enforces what each stage is allowed to do, and compiles it to a
 Broadway/GenStage supervision tree.
 
-> ⚠️ **Experimental — early and moving fast.** The public API and the manifest
+> **Experimental — early and moving fast.** The public API and the manifest
 > format may change between releases, and bloccs isn't durable (put Oban or a
 > broker at the edges for work that must survive restarts). Great for exploring
 > and prototyping — pin a version and check the [CHANGELOG](CHANGELOG.md) before
@@ -57,11 +63,45 @@ LLMs](#legible-to-humans-and-llms)).
 > rather than maintained by hand. The next section shows the two checks that
 > aren't possible with plain Broadway.
 
+## Features
+
+What you get that hand-wired Broadway pipelines don't:
+
+- **Typed edges** — every connection carries a versioned schema (`Name@N`); a
+  graph whose ports don't match is rejected at validation time, before it runs.
+- **Capability-scoped effects** — a node may only touch the world (HTTP / DB /
+  Time / Random) through effects it declared; an undeclared host or axis is
+  refused at runtime and warned at compile time.
+- **Reviewable output** — the compiler emits the Broadway/OTP supervision tree as
+  real, debuggable `.ex` source you can read and `git diff` in a PR.
+- **The topology is a declared artifact** — a TOML manifest, not a supervisor
+  module you reconstruct in your head.
+
+Wired into every generated node:
+
+- **Retry** with backoff (constant / linear / exponential), matched against the
+  failure reason; permanent failures are never retried.
+- **Timeouts** that bound each node in a task.
+- **Idempotency** keys reserved atomically in-flight.
+- **Back-pressure** via bounded buffers instead of dropping.
+- **Observability** — `:telemetry` spans and events for every node and edge,
+  plus per-message lineage so a message can be tracked across the graph.
+- **Flow primitives** — transform, filter, split, route, merge,
+  aggregate/window (`[batch]`), join, throttle/delay — and subgraph composition.
+
+A companion package, [bloccs_web](https://github.com/Bloccs/bloccs_web), is a
+self-hosted dashboard that renders the topology and these telemetry signals live.
+
+## Requirements
+
+- Elixir `~> 1.18`
+- `broadway ~> 1.1` and `gen_stage ~> 1.2` (pulled in automatically)
+
 ## Install
 
 ```elixir
 def deps do
-  [{:bloccs, "~> 0.1"}]
+  [{:bloccs, "~> 0.5"}]
 end
 ```
 
