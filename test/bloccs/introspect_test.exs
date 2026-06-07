@@ -120,6 +120,15 @@ defmodule Bloccs.IntrospectTest do
       assert is_binary(schema)
     end
 
+    test "exposes each node's contract (the functions that run) and config", %{net: net} do
+      enrich = Enum.find(net.nodes, &(&1.id == :enrich))
+      assert enrich.contract.pure_core =~ ~r/\.transform\/2$/
+      assert enrich.contract.effect_shell =~ ~r/\.execute\/2$/
+      # the events `enrich` node declares a timeout + retry policy
+      assert is_integer(enrich.contract.timeout_ms)
+      assert is_map(enrich.config)
+    end
+
     test "flattens the edge table into 6 endpoint pairs incl. the route fan-out", %{net: net} do
       assert length(net.edges) == 6
 
