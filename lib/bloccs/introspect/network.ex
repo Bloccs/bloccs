@@ -13,6 +13,23 @@ defmodule Bloccs.Introspect.Network do
   @type glyph ::
           :node | :node_effect | :source | :sink | :split | :batch | :join | :throttle | :delay
 
+  @typedoc "A node's implementation contract: the functions that run + per-message policy."
+  @type contract_view :: %{
+          pure_core: String.t() | nil,
+          effect_shell: String.t() | nil,
+          timeout_ms: pos_integer() | nil,
+          retry: map() | nil,
+          idempotency: map() | nil
+        }
+
+  @typedoc "Primitive config declared on the node ([batch]/[join]/[rate]/[delay])."
+  @type config_view :: %{
+          batch: map() | nil,
+          join: map() | nil,
+          rate: map() | nil,
+          delay_ms: pos_integer() | nil
+        }
+
   @typedoc "A node's drawable identity: kind + the canonical notation glyph."
   @type node_view :: %{
           id: atom(),
@@ -22,7 +39,9 @@ defmodule Bloccs.Introspect.Network do
           ports_out: [port_view()],
           effects: [:http | :db | :time | :random],
           concurrency: pos_integer(),
-          doc: %{intent: String.t() | nil, owner: String.t() | nil}
+          doc: %{intent: String.t() | nil, owner: String.t() | nil},
+          contract: contract_view(),
+          config: config_view()
         }
 
   @type edge_view :: %{from: endpoint(), to: endpoint()}

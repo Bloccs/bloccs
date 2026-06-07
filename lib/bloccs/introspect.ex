@@ -100,12 +100,41 @@ defmodule Bloccs.Introspect do
       ports_out: ports(manifest.ports_out),
       effects: Effects.declared(manifest.effects),
       concurrency: concurrency,
-      doc: doc(manifest.doc)
+      doc: doc(manifest.doc),
+      contract: contract(manifest.contract),
+      config: config(manifest)
     }
   end
 
   defp ports(map) do
     Enum.map(map, fn {name, %Port{} = p} -> %{name: name, schema: p.schema, buffer: p.buffer} end)
+  end
+
+  # The node's implementation contract: which functions provide its logic (the
+  # author's `pure_core` / `effect_shell`) plus the per-message policies. This is
+  # what an observer needs to see "what code runs here" — and what a component
+  # author exposes when shipping their own bloccs node.
+  defp contract(c) do
+    %{
+      pure_core: ref(c.pure_core),
+      effect_shell: ref(c.effect_shell),
+      timeout_ms: c.timeout_ms,
+      retry: c.retry,
+      idempotency: c.idempotency
+    }
+  end
+
+  defp ref(%{module: m, function: f, arity: a}), do: "#{inspect(m)}.#{f}/#{a}"
+  defp ref(_), do: nil
+
+  # Primitive configuration declared on the node ([batch]/[join]/[rate]/[delay]).
+  defp config(manifest) do
+    %{
+      batch: manifest.batch,
+      join: manifest.join,
+      rate: manifest.rate,
+      delay_ms: manifest.delay_ms
+    }
   end
 
   defp doc(nil), do: %{intent: nil, owner: nil}
