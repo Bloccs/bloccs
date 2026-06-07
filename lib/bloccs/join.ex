@@ -56,7 +56,7 @@ defmodule Bloccs.Join do
 
   @doc """
   Record an arrival on `port` for join `scope`, carrying the arriving message's
-  `lineage` (`Bloccs.Lineage.t/0` or `nil`). Returns `{:complete, payloads,
+  `lineage` (`t:Bloccs.Lineage.t/0` or `nil`). Returns `{:complete, payloads,
   parents}` — a `%{port => payload}` map plus the list of correlated arrivals'
   lineages (the joined output's parents) — once every required in-port has
   arrived for the arrival's correlation key; `:partial` while still waiting; or
