@@ -24,6 +24,7 @@ defmodule Bloccs.Manifest.Node do
           join: Join.t() | nil,
           rate: Rate.t() | nil,
           delay_ms: pos_integer() | nil,
+          reply: boolean(),
           observability: %{optional(atom()) => term()}
         }
 
@@ -42,6 +43,7 @@ defmodule Bloccs.Manifest.Node do
     :join,
     :rate,
     :delay_ms,
+    reply: false,
     observability: %{}
   ]
 

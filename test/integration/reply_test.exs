@@ -1,0 +1,66 @@
+defmodule Bloccs.Integration.ReplyTest do
+  @moduledoc """
+  End-to-end proof of request/response: `Bloccs.call/4` pushes a request into a
+  running network and blocks for the reply emitted by a `reply = true` node,
+  correlated by the message's trace_id (`Bloccs.Collector`). `cast/4` is the
+  async variant. The pipeline itself stays asynchronous — only the caller waits.
+  """
+
+  use ExUnit.Case, async: false
+
+  alias Bloccs.{Compiler, Parser, Schema, Validator}
+
+  @path Path.expand("../fixtures/reply/reply.bloccs", __DIR__)
+
+  setup_all do
+    Schema.clear!()
+    Schema.register("Req@1", n: :integer)
+    Schema.register("Res@1", total: :integer)
+
+    {:ok, network} = Parser.parse_network(@path)
+    :ok = Validator.validate_network(network)
+    {:ok, sup} = Compiler.compile_and_load(network)
+    {:ok, _} = sup.start_link([])
+
+    on_exit(fn ->
+      try do
+        Supervisor.stop(sup, :normal, 5_000)
+      catch
+        :exit, _ -> :ok
+      end
+    end)
+
+    :ok
+  end
+
+  test "call/4 blocks and returns the reply the reply-node computed" do
+    assert {:ok, %{"total" => 10}} = Bloccs.call(:reply_demo, :request, %{"n" => 5})
+  end
+
+  test "call/4 resolves the entry through an exposed input port" do
+    assert {:error, {:unknown_port, :nope}} = Bloccs.call(:reply_demo, :nope, %{"n" => 1})
+  end
+
+  test "call/4 returns {:error, :unknown_network} for a network that isn't running" do
+    assert {:error, :unknown_network} = Bloccs.call(:no_such_network, :request, %{"n" => 1})
+  end
+
+  test "call/4 returns {:error, :timeout} when no reply arrives in time" do
+    # A payload that fails the inbound Req@1 schema is dropped before it can
+    # reach the reply node, so the caller times out rather than hanging.
+    assert {:error, :timeout} =
+             Bloccs.call(:reply_demo, :request, %{"n" => "not-an-int"}, timeout: 200)
+  end
+
+  test "cast/4 returns a trace_id and delivers the reply asynchronously" do
+    {:ok, trace_id} = Bloccs.cast(:reply_demo, :request, %{"n" => 7}, send_result: true)
+    assert is_integer(trace_id)
+    assert_receive {:bloccs_reply, ^trace_id, {:ok, %{"total" => 14}}}, 1_000
+  end
+
+  test "cast/4 without send_result is fire-and-forget but still yields the trace_id" do
+    assert {:ok, trace_id} = Bloccs.cast(:reply_demo, :request, %{"n" => 3})
+    assert is_integer(trace_id)
+    refute_receive {:bloccs_reply, ^trace_id, _}, 100
+  end
+end

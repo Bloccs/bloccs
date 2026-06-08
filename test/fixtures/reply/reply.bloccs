@@ -1,0 +1,22 @@
+[network]
+id      = "reply_demo"
+version = "0.1.0"
+
+# A minimal request/response network: an ingest source forwards the request to a
+# `reply = true` pricing node, which computes a total and emits it on its reply
+# out-port. `Bloccs.call/4` pushes to the exposed `request` input and blocks for
+# the reply correlated by trace_id.
+[nodes]
+ingest = { use = "ingest.bloccs" }
+price  = { use = "price.bloccs" }
+
+[[edges]]
+from = "ingest.out"
+to   = "price.request"
+
+[expose]
+in  = { request = "ingest.request" }
+out = { reply = "price.reply" }
+
+[supervision]
+strategy = "one_for_one"

@@ -273,6 +273,8 @@ defmodule Bloccs.Runtime do
     # Every emit here is caused by this one input message — its children.
     ctx = Bloccs.Lineage.child(Bloccs.Lineage.of(msg.metadata))
 
+    maybe_reply(emits, msg, cfg)
+
     case dispatch_all(emits, cfg, ctx) do
       [] ->
         msg
@@ -294,6 +296,25 @@ defmodule Bloccs.Runtime do
       end
     end)
   end
+
+  # When this node is declared `reply = true`, report each emitted payload to the
+  # collector keyed by the *incoming* message's trace_id — the correlation id a
+  # `Bloccs.call/4` caller is blocked on. Delivery downstream still happens as
+  # normal; the reply is an extra, parallel hand-off to the waiting caller, so
+  # the pipeline itself stays asynchronous.
+  defp maybe_reply(emits, %Message{metadata: meta}, %Config{manifest: %{reply: true}} = cfg) do
+    case Bloccs.Lineage.of(meta) do
+      %{trace_id: trace} ->
+        Enum.each(emits, fn {_port, payload} ->
+          Bloccs.Collector.report(cfg.network_id, trace, payload)
+        end)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp maybe_reply(_emits, _msg, _cfg), do: :ok
 
   # On failure, consult the node's retry policy. If the reason is retriable and
   # attempts remain, schedule a backed-off re-enqueue into this node's own

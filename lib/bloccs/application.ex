@@ -12,7 +12,9 @@ defmodule Bloccs.Application do
       {Registry, keys: :unique, name: Bloccs.NetworkRegistry},
       Bloccs.Idempotency,
       Bloccs.Router,
-      Bloccs.Join
+      Bloccs.Join,
+      # Correlates a network's reply back to a `Bloccs.call/4` / `cast/4` caller.
+      Bloccs.Collector
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Bloccs.Supervisor)
