@@ -6,38 +6,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.7.0] — 2026-06-08
-
-### Added
-
-- **Request/response errors come back as data — `Bloccs.EffectError`.** When a
-  node on a `Bloccs.call/4` request's trace fails terminally — a bad inbound
-  schema (`:validate`), the node raising / returning `{:error, _}` / a
-  `timeout_ms` overrun (`:execute`), or a downstream delivery failure
-  (`:dispatch`) — the caller now receives `{:error, %Bloccs.EffectError{node,
-  phase, attempt, reason}}` instead of waiting out the timeout. So `call/4` can
-  tell "failed" from "slow"; `{:error, :timeout}` is now reserved for a request
-  that is legitimately filtered/dropped (no reply *and* no error). `cast/4` with
-  `send_result: true` delivers the typed error the same way.
-
-  A retried failure is not reported (a later attempt may still reply). Errors are
-  correlated by the same `trace_id` as replies, so the `[batch]`/`[join]` caveat
-  applies equally.
-
-### Changed
-
-- **`Bloccs.Collector` now registers before push.** `call/4` / `cast/4` register
-  the `trace_id` synchronously *before* pushing, so a reply/error for an
-  unregistered trace is dropped (not buffered) — a plain `Bloccs.Producer.push/3`
-  or a fire-and-forget `reply = true` node costs the collector nothing. This also
-  removes the push/await race window without a TTL buffer.
-
-### Documentation
-
-- Added `guides/request-response.md` and README + module docs covering `call/4` /
-  `cast/4`, `reply = true` nodes, and `Bloccs.EffectError` (the v0.6.0
-  request/response feature was previously documented only in moduledocs).
-
 ## [0.6.0] — 2026-06-08
 
 ### Added
@@ -52,21 +20,34 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     the response on an out-port.
   - `Bloccs.call(network_id, in_port, payload, opts)` pushes to an exposed input
     port and blocks until that node replies, returning `{:ok, reply}` or
-    `{:error, reason}` (`:timeout` | `:no_producer` | `:unknown_network` |
-    `{:unknown_port, port}`). `:timeout` defaults to `5_000` ms.
+    `{:error, reason}`. `:timeout` defaults to `5_000` ms.
   - `Bloccs.cast(network_id, in_port, payload, opts)` returns `{:ok, trace_id}`
     immediately; with `send_result: true` the caller is later sent
     `{:bloccs_reply, trace_id, result}`.
 
-  Correlation reuses the per-message `trace_id` (`Bloccs.Lineage`): a new
-  `Bloccs.Collector` process keys an in-flight request on `{network_id, trace_id}`
-  and matches the reply back to the caller, buffering an early reply and enforcing
-  the timeout collector-side (so a late reply can never crash a timed-out caller).
+- **Errors come back as data — `Bloccs.EffectError`.** When a node on a request's
+  trace fails terminally — a bad inbound schema (`:validate`), the node raising /
+  returning `{:error, _}` / a `timeout_ms` overrun (`:execute`), or a downstream
+  delivery failure (`:dispatch`) — the caller receives `{:error,
+  %Bloccs.EffectError{node, phase, attempt, reason}}` instead of waiting out the
+  timeout. So `call/4` can tell "failed" from "slow"; `{:error, :timeout}` is
+  reserved for a request that is legitimately filtered/dropped (no reply *and* no
+  error). `cast/4` with `send_result: true` delivers the typed error the same way.
+  A *retried* failure is not reported (a later attempt may still reply). The other
+  `{:error, _}` reasons are `:no_producer | :unknown_network | {:unknown_port, p}`
+  (the request could not be admitted).
 
-  Limitations this milestone: first-wins aggregation (one reply per request);
-  correlation does not survive a `[batch]`/`[join]` (which mint a fresh
-  `trace_id`); errors are not yet routed back as data (a failed request surfaces
-  as a `call/4` timeout). See `Bloccs.Collector` and
+  Correlation reuses the per-message `trace_id` (`Bloccs.Lineage`): the new
+  `Bloccs.Collector` process keys an in-flight request on `{network_id, trace_id}`,
+  registered synchronously *before* the push (so a reply/error for an unregistered
+  trace is dropped, not buffered — plain `push/3` and fire-and-forget `reply =
+  true` nodes cost the collector nothing) and enforces the timeout collector-side
+  (a late reply can never crash a timed-out caller).
+
+  Limitations: first-wins aggregation (one result per request); correlation
+  (reply *and* error) does not survive a `[batch]`/`[join]` (which mint a fresh
+  `trace_id`). See `Bloccs.Collector`, the
+  [request/response guide](guides/request-response.md), and
   `research/12-request-response-primitive.md`.
 
 ## [0.5.0] — 2026-06-07
