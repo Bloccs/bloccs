@@ -27,9 +27,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     behaviour directly.
 
   A read is an effect (lives in `effect_shell`); together with `Bloccs.call/4` this
-  enables the *receive → read → decide → write → reply* shape. Update/delete and
-  transactions are the next milestones (see
-  `research/13-db-read-write-effect.md`).
+  enables the *receive → read → decide → write → reply* shape.
+
+- **DB update / delete — `Bloccs.Effects.DB.update/4`, `delete/3`.** Behind
+  `"table:update"` / `"table:delete"` scopes, keyed by primary `id`; both return
+  `{:ok, rows_affected}`. `update/4` takes `%{column => value | {:inc, n}}`, where
+  `{:inc, n}` compiles to `SET col = col + n` — a **read-free atomic increment**
+  (negative `n` decrements), the correct primitive for counters.
+
+- **DB transactions — `Bloccs.Effects.DB.transaction/2`.** Runs a unit of work
+  atomically, as either a function (`fn db -> {:ok, result} | {:error, reason} end`
+  — inner DB calls run in the transaction) or a declarative list of ops
+  (`{:insert, …}` / `{:update, …}` / `{:delete, …}`, run in order, short-circuiting
+  on the first error as `{:error, {index, reason}}`). Returning `{:error, _}` or
+  raising rolls everything back; each inner op is scope-checked. `DB.Ecto` maps to
+  `repo.transaction/1` + `repo.rollback/1` (no compile-time Ecto); `DB.Mock`
+  snapshots and restores its store, so tests get real atomicity with no database.
+  This makes the read-free atomic-counter pattern (insert + `{:inc, 1}`)
+  expressible in one atomic unit. See `research/13-db-read-write-effect.md`.
 
 ### Added
 

@@ -59,6 +59,17 @@ defmodule Bloccs.Effects.DB do
   @typedoc "An ANDed equality filter: `%{column => value}`. Empty matches all."
   @type filter :: map()
   @type row :: %{optional(String.t()) => term()}
+  @typedoc """
+  A column assignment for `update/4`: a literal value sets `col = value`; the
+  tuple `{:inc, n}` sets `col = col + n` (a negative `n` decrements), which is an
+  *atomic* read-free increment — the right primitive for counters.
+  """
+  @type change :: term() | {:inc, number()}
+  @typedoc "A step for the declarative `transaction/2` form."
+  @type op ::
+          {:insert, table(), attrs()}
+          | {:update, table(), id :: term(), %{optional(term()) => change()}}
+          | {:delete, table(), id :: term()}
 
   @callback new(declaration()) :: cap()
   @callback insert(cap(), table(), attrs()) :: {:ok, map()} | {:error, term()}
@@ -66,6 +77,12 @@ defmodule Bloccs.Effects.DB do
   @callback all(cap(), table(), filter()) :: {:ok, [row()]} | {:error, term()}
   @callback one(cap(), table(), filter()) ::
               {:ok, row() | nil} | {:error, :multiple_results | term()}
+  @callback update(cap(), table(), id :: term(), %{optional(term()) => change()}) ::
+              {:ok, non_neg_integer()} | {:error, term()}
+  @callback delete(cap(), table(), id :: term()) ::
+              {:ok, non_neg_integer()} | {:error, term()}
+  @callback transaction(cap(), (cap() -> {:ok, term()} | {:error, term()}) | [op()]) ::
+              {:ok, term()} | {:error, term()}
 
   @doc "Insert `attrs` into `table` through the bound DB backend."
   @spec insert(cap(), table(), attrs()) :: {:ok, map()} | {:error, term()}
@@ -85,6 +102,59 @@ defmodule Bloccs.Effects.DB do
   """
   @spec one(cap(), table(), filter()) :: {:ok, row() | nil} | {:error, term()}
   def one(%mod{} = cap, table, filter), do: mod.one(cap, table, filter)
+
+  @doc """
+  Update the row in `table` with primary key `id`, applying `changes`
+  (`%{column => value | {:inc, n}}`). Returns `{:ok, rows_updated}` (0 or 1).
+  """
+  @spec update(cap(), table(), term(), %{optional(term()) => change()}) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def update(%mod{} = cap, table, id, changes), do: mod.update(cap, table, id, changes)
+
+  @doc "Delete the row in `table` with primary key `id`. Returns `{:ok, rows_deleted}`."
+  @spec delete(cap(), table(), term()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def delete(%mod{} = cap, table, id), do: mod.delete(cap, table, id)
+
+  @doc """
+  Run a unit of work atomically. The second argument is either:
+
+  - a **function** `fn db -> {:ok, result} | {:error, reason} end` — `db` is the
+    same capability, so DB calls inside run in the transaction; returning
+    `{:error, _}` (or raising) rolls everything back; or
+  - a **list of ops** (`t:op/0`) run in order, short-circuiting on the first
+    `{:error, _}` (returned as `{:error, {index, reason}}`).
+
+  Returns `{:ok, result}` (the function's result, or the list of per-op results)
+  or `{:error, reason}`. Each inner op is scope-checked like a standalone call.
+  """
+  @spec transaction(cap(), (cap() -> {:ok, term()} | {:error, term()}) | [op()]) ::
+          {:ok, term()} | {:error, term()}
+  def transaction(%mod{} = cap, fun_or_ops), do: mod.transaction(cap, fun_or_ops)
+
+  @doc false
+  # Shared by backends: dispatch a transaction's body (function or op-list).
+  @spec run_txn(cap(), (cap() -> term()) | [op()]) :: {:ok, term()} | {:error, term()}
+  def run_txn(cap, fun) when is_function(fun, 1), do: fun.(cap)
+  def run_txn(cap, ops) when is_list(ops), do: run_ops(cap, ops)
+
+  defp run_ops(cap, ops) do
+    ops
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {op, i}, {:ok, acc} ->
+      case apply_op(cap, op) do
+        {:ok, r} -> {:cont, {:ok, [r | acc]}}
+        {:error, reason} -> {:halt, {:error, {i, reason}}}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      err -> err
+    end
+  end
+
+  defp apply_op(cap, {:insert, table, attrs}), do: insert(cap, table, attrs)
+  defp apply_op(cap, {:update, table, id, changes}), do: update(cap, table, id, changes)
+  defp apply_op(cap, {:delete, table, id}), do: delete(cap, table, id)
 end
 
 defmodule Bloccs.Effects.Time do

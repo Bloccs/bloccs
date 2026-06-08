@@ -162,6 +162,85 @@ defmodule Bloccs.Effects.DB.Ecto do
     {" WHERE " <> Enum.join(clauses, " AND "), Enum.map(entries, &elem(&1, 1))}
   end
 
+  @impl true
+  def update(%__MODULE__{allow: allow, repo: repo}, table, id, changes) do
+    cond do
+      "#{table}:update" not in allow -> deny(:update, table, allow)
+      is_nil(repo) -> deny_no_repo()
+      true -> do_update(repo, table, id, changes)
+    end
+  end
+
+  @impl true
+  def delete(%__MODULE__{allow: allow, repo: repo}, table, id) do
+    cond do
+      "#{table}:delete" not in allow -> deny(:delete, table, allow)
+      is_nil(repo) -> deny_no_repo()
+      true -> do_delete(repo, table, id)
+    end
+  end
+
+  @impl true
+  def transaction(%__MODULE__{repo: nil}, _fun_or_ops), do: deny_no_repo()
+
+  def transaction(%__MODULE__{repo: repo} = cap, fun_or_ops) do
+    repo.transaction(fn ->
+      case Bloccs.Effects.DB.run_txn(cap, fun_or_ops) do
+        {:ok, value} -> value
+        {:error, reason} -> repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp do_update(repo, table, id, changes) do
+    {set_sql, set_params, next} = build_set(repo, changes)
+    sql = ~s(UPDATE "#{table}" SET #{set_sql} WHERE "id" = #{placeholder(repo, next)})
+    %{num_rows: count} = repo.query!(sql, set_params ++ [id])
+    {:ok, count}
+  rescue
+    e -> {:error, e}
+  end
+
+  defp do_delete(repo, table, id) do
+    sql = ~s(DELETE FROM "#{table}" WHERE "id" = #{placeholder(repo, 1)})
+    %{num_rows: count} = repo.query!(sql, [id])
+    {:ok, count}
+  rescue
+    e -> {:error, e}
+  end
+
+  # Build the `SET col = …` fragment, params, and the next placeholder index (for
+  # the trailing `WHERE "id" = …`). A `{:inc, n}` value becomes `col = col + ?`.
+  defp build_set(repo, changes) do
+    {frags, params, next} =
+      changes
+      |> Enum.to_list()
+      |> Enum.reduce({[], [], 1}, fn {col, val}, {frags, params, i} ->
+        case val do
+          {:inc, n} ->
+            {frags ++ [~s("#{col}" = "#{col}" + #{placeholder(repo, i)})], params ++ [n], i + 1}
+
+          literal ->
+            {frags ++ [~s("#{col}" = #{placeholder(repo, i)})], params ++ [literal], i + 1}
+        end
+      end)
+
+    {Enum.join(frags, ", "), params, next}
+  end
+
+  @spec deny(atom(), term(), [String.t()]) :: no_return()
+  defp deny(action, table, allow),
+    do: Effects.deny!(:db, "scope #{table}:#{action} not in #{inspect(allow)}")
+
+  @spec deny_no_repo() :: no_return()
+  defp deny_no_repo do
+    Effects.deny!(
+      :db,
+      "no Ecto repo configured for #{inspect(__MODULE__)}; " <>
+        "set config :bloccs, #{inspect(__MODULE__)}, repo: MyApp.Repo"
+    )
+  end
+
   defp placeholder(repo, i) do
     case repo.__adapter__() do
       Ecto.Adapters.Postgres -> "$#{i}"
