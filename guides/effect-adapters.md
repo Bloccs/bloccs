@@ -97,6 +97,33 @@ config :bloccs, Bloccs.Effects.DB.Ecto, repo: MyApp.Repo, returning: [:id]
 
 The generated values are merged into the returned `row`.
 
+### Reads
+
+The DB axis also reads, behind a `"table:read"` scope:
+
+```elixir
+db = { allow = ["items:read", "items:insert"] }
+```
+
+```elixir
+{:ok, row}  = DB.get(ctx.effects.db, :items, id)          # by primary key (id), or nil
+{:ok, rows} = DB.all(ctx.effects.db, :items, %{group: "x"}) # ANDed equality, [] = all
+{:ok, row}  = DB.one(ctx.effects.db, :items, %{slug: "x"})  # one, nil, or {:error, :multiple_results}
+```
+
+Rows come back as **string-keyed maps** from both `DB.Mock` and `DB.Ecto`, so the
+same node logic works against either. A read is an effect — it lives in
+`effect_shell`, never `pure_core`. To drive *pure* logic with the result, merge it
+into the payload and emit to a downstream node; for request/response, read and
+reply in the one shell.
+
+`DB.Ecto` runs reads as a parameterized `repo.query!/2` (the only path needing no
+compile-time `Ecto.Query` macro). The filter is ANDed equality only; placeholders
+are picked from `repo.__adapter__/0` (`$n` for Postgres, `?` otherwise) and
+identifiers are double-quoted, so **Postgres and SQLite3** are supported — for
+other dialects (e.g. MySQL back-ticks) or richer queries (`IN`, ranges, ordering),
+implement the `Bloccs.Effects.DB` behaviour directly.
+
 ## Writing a custom backend
 
 Implement the axis behaviour. Enforce the declared scope yourself, then do I/O.

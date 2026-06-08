@@ -18,12 +18,28 @@ defmodule Bloccs.Effects.DB.Ecto do
 
   ## Semantics
 
-  - The declared `"table:insert"` scope is enforced; a violation raises
-    `Bloccs.Effects.Denied` (like the mock).
-  - On success returns `{:ok, row}`. If you configure `returning` columns
-    (below), database-generated values (e.g. an auto-increment `id`) are merged
-    into the returned row; otherwise the row is just the attrs you inserted.
+  - The declared `"table:insert"` / `"table:read"` scope is enforced; a violation
+    raises `Bloccs.Effects.Denied` (like the mock).
+  - On success `insert/3` returns `{:ok, row}`. If you configure `returning`
+    columns (below), database-generated values (e.g. an auto-increment `id`) are
+    merged into the returned row; otherwise the row is just the attrs you inserted.
   - A repo/database error is caught and returned as `{:error, exception}`.
+
+  ## Reads
+
+  `get/3` / `all/3` / `one/3` run a parameterized `repo.query!/2` (the only path
+  that needs no compile-time `Ecto.Query` macro) and return rows as **string-keyed
+  maps**. The filter is ANDed equality only (`%{column => value}`). Placeholders
+  are chosen from `repo.__adapter__/0` — `$1, $2, …` for
+  `Ecto.Adapters.Postgres`, `?` otherwise (SQLite3 / MyXQL). Identifiers are
+  double-quoted, so **Postgres and SQLite3 are supported**; back-tick dialects
+  (MySQL) are not in this version — implement the `Bloccs.Effects.DB` behaviour
+  directly for those.
+
+  > Table and filter-column names are interpolated into SQL (values are always
+  > parameterized). They come from node source — trusted code, like the table
+  > name in `insert/3` — not from message payloads. Don't derive them from
+  > untrusted input.
 
   ## Returning generated columns
 
@@ -84,5 +100,72 @@ defmodule Bloccs.Effects.DB.Ecto do
     end
   rescue
     e -> {:error, e}
+  end
+
+  @impl true
+  def get(%__MODULE__{} = cap, table, id), do: one(cap, table, %{"id" => id})
+
+  @impl true
+  def all(%__MODULE__{} = cap, table, filter), do: read(cap, table, filter, :all)
+
+  @impl true
+  def one(%__MODULE__{} = cap, table, filter) do
+    case read(cap, table, filter, :one) do
+      {:ok, [row]} -> {:ok, row}
+      {:ok, []} -> {:ok, nil}
+      {:ok, _many} -> {:error, :multiple_results}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp read(%__MODULE__{allow: allow, repo: repo}, table, filter, mode) do
+    scope = "#{table}:read"
+
+    cond do
+      scope not in allow ->
+        Effects.deny!(:db, "scope #{scope} not in #{inspect(allow)}")
+
+      is_nil(repo) ->
+        Effects.deny!(
+          :db,
+          "no Ecto repo configured for #{inspect(__MODULE__)}; " <>
+            "set config :bloccs, #{inspect(__MODULE__)}, repo: MyApp.Repo"
+        )
+
+      true ->
+        do_read(repo, table, filter, mode)
+    end
+  end
+
+  defp do_read(repo, table, filter, mode) do
+    {where, params} = build_where(repo, filter)
+    # `:one` fetches up to two rows so the facade can flag a multi-row match.
+    limit = if mode == :one, do: " LIMIT 2", else: ""
+    sql = ~s(SELECT * FROM "#{table}"#{where}#{limit})
+
+    %{columns: cols, rows: rows} = repo.query!(sql, params)
+    {:ok, Enum.map(rows, fn row -> Map.new(Enum.zip(cols, row)) end)}
+  rescue
+    e -> {:error, e}
+  end
+
+  defp build_where(_repo, filter) when map_size(filter) == 0, do: {"", []}
+
+  defp build_where(repo, filter) do
+    entries = Enum.to_list(filter)
+
+    clauses =
+      entries
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{col, _v}, i} -> ~s("#{col}" = #{placeholder(repo, i)}) end)
+
+    {" WHERE " <> Enum.join(clauses, " AND "), Enum.map(entries, &elem(&1, 1))}
+  end
+
+  defp placeholder(repo, i) do
+    case repo.__adapter__() do
+      Ecto.Adapters.Postgres -> "$#{i}"
+      _ -> "?"
+    end
   end
 end

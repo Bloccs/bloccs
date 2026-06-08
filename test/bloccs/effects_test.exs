@@ -71,6 +71,57 @@ defmodule Bloccs.EffectsTest do
     end
   end
 
+  describe "DB.Mock reads" do
+    setup do
+      MockDB.reset()
+      cap = MockDB.new(%{allow: ["items:insert", "items:read"]})
+      {:ok, _} = MockDB.insert(cap, :items, name: "a", group: "x")
+      {:ok, %{id: id_b}} = MockDB.insert(cap, :items, name: "b", group: "x")
+      {:ok, _} = MockDB.insert(cap, :items, name: "c", group: "y")
+      %{cap: cap, id_b: id_b}
+    end
+
+    test "get/3 fetches by id as a string-keyed map", %{cap: cap, id_b: id_b} do
+      assert {:ok, %{"name" => "b", "id" => ^id_b}} = MockDB.get(cap, :items, id_b)
+    end
+
+    test "get/3 returns nil for a missing id", %{cap: cap} do
+      assert {:ok, nil} = MockDB.get(cap, :items, -1)
+    end
+
+    test "all/3 filters by ANDed equality, in insertion order", %{cap: cap} do
+      assert {:ok, rows} = MockDB.all(cap, :items, %{"group" => "x"})
+      assert Enum.map(rows, & &1["name"]) == ["a", "b"]
+    end
+
+    test "all/3 with an empty filter returns every row", %{cap: cap} do
+      assert {:ok, rows} = MockDB.all(cap, :items, %{})
+      assert length(rows) == 3
+    end
+
+    test "one/3 returns a single match, nil, or :multiple_results", %{cap: cap} do
+      assert {:ok, %{"name" => "c"}} = MockDB.one(cap, :items, %{"group" => "y"})
+      assert {:ok, nil} = MockDB.one(cap, :items, %{"group" => "none"})
+      assert {:error, :multiple_results} = MockDB.one(cap, :items, %{"group" => "x"})
+    end
+
+    test "reads require a :read scope" do
+      insert_only = MockDB.new(%{allow: ["items:insert"]})
+
+      assert_raise Bloccs.Effects.Denied, ~r/items:read/, fn ->
+        MockDB.all(insert_only, :items, %{})
+      end
+    end
+
+    test "an undeclared db axis refuses reads through the facade" do
+      stub = Bloccs.Effects.Denied.Stub.new(:undeclared)
+
+      assert_raise Bloccs.Effects.Denied, ~r/axis not declared/, fn ->
+        Bloccs.Effects.DB.all(stub, :items, %{})
+      end
+    end
+  end
+
   test "time effect", %{node: node} do
     caps = Effects.bind(node)
     assert %DateTime{} = Bloccs.Effects.Time.System.now(caps.time)

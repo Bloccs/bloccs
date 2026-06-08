@@ -107,6 +107,15 @@ defmodule Bloccs.Effects.Denied.Stub do
   @spec insert(t(), term(), term()) :: no_return()
   def insert(_stub, _, _), do: Bloccs.Effects.deny!(:db, "axis not declared")
 
+  @spec get(t(), term(), term()) :: no_return()
+  def get(_stub, _, _), do: Bloccs.Effects.deny!(:db, "axis not declared")
+
+  @spec all(t(), term(), term()) :: no_return()
+  def all(_stub, _, _), do: Bloccs.Effects.deny!(:db, "axis not declared")
+
+  @spec one(t(), term(), term()) :: no_return()
+  def one(_stub, _, _), do: Bloccs.Effects.deny!(:db, "axis not declared")
+
   @spec now(t()) :: no_return()
   def now(_stub), do: Bloccs.Effects.deny!(:time, "axis not declared")
 
