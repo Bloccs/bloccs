@@ -82,4 +82,49 @@ defmodule Bloccs.Integration.ReplyTest do
     assert is_integer(trace_id)
     refute_receive {:bloccs_reply, ^trace_id, _}, 100
   end
+
+  describe "observability" do
+    setup do
+      handler = {__MODULE__, make_ref()}
+
+      :telemetry.attach_many(
+        handler,
+        [[:bloccs, :request, :start], [:bloccs, :request, :stop]],
+        fn event, meas, meta, %{pid: pid} -> send(pid, {:telemetry, event, meas, meta}) end,
+        %{pid: self()}
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      :ok
+    end
+
+    test "a successful call emits request start + stop (outcome :reply), correlated by trace_id" do
+      assert {:ok, %{"total" => 10}} = Bloccs.call(:reply_demo, :request, %{"n" => 5})
+
+      assert_receive {:telemetry, [:bloccs, :request, :start], _meas,
+                      %{network: :reply_demo, mode: :call, trace_id: t}}
+
+      assert_receive {:telemetry, [:bloccs, :request, :stop], %{duration: _},
+                      %{outcome: :reply, trace_id: ^t}}
+    end
+
+    test "a failed call emits stop with outcome :error and the EffectError" do
+      assert {:error, %Bloccs.EffectError{}} = Bloccs.call(:reply_demo, :request, %{"n" => 0})
+
+      assert_receive {:telemetry, [:bloccs, :request, :stop], _meas,
+                      %{outcome: :error, error: %Bloccs.EffectError{phase: :execute}}}
+    end
+
+    test "a timed-out call emits stop with outcome :timeout" do
+      assert {:error, :timeout} = Bloccs.call(:reply_demo, :request, %{"n" => -3}, timeout: 100)
+
+      assert_receive {:telemetry, [:bloccs, :request, :stop], _meas, %{outcome: :timeout}}, 500
+    end
+
+    test "stats/0 reports the in-flight request count" do
+      assert %{in_flight: in_flight, by_network: by_network} = Bloccs.Collector.stats()
+      assert is_integer(in_flight) and in_flight >= 0
+      assert is_map(by_network)
+    end
+  end
 end

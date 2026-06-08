@@ -46,6 +46,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   This makes the read-free atomic-counter pattern (insert + `{:inc, 1}`)
   expressible in one atomic unit. See `research/13-db-read-write-effect.md`.
 
+- **Request/response observability.** The `Bloccs.call/4` / `cast/4` lifecycle is
+  now observable (for dashboards and metrics handlers):
+  - `Bloccs.Collector` emits `[:bloccs, :request, :start]` on register and
+    `[:bloccs, :request, :stop]` on resolution — metadata `%{network, trace_id,
+    mode}` with, on stop, `:outcome` (`:reply | :error | :timeout`), a `:duration`
+    measurement, and the `%Bloccs.EffectError{}` under `:error` on a failure. The
+    `trace_id` ties a request to the `[:bloccs, :emit]` / `[:bloccs, :node, *]`
+    events of the messages it spawned. (The default logger also reports it.)
+  - `Bloccs.Collector.stats/0` returns a snapshot of in-flight requests
+    (`%{in_flight, by_network}`).
+
 ### Added
 
 - **Request/response — `Bloccs.call/4` and `Bloccs.cast/4`.** A network was until

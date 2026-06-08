@@ -71,6 +71,19 @@ defmodule Bloccs.Telemetry do
     buffer was full (the caller waits until a consumer drains space)
     - measurements: `%{size}`
     - metadata: `%{name, buffer}`
+
+  Request/response (`Bloccs.call/4` / `cast/4`) is wrapped by `Bloccs.Collector`,
+  which emits a start/stop pair per request:
+
+  - `[:bloccs, :request, :start]` — a request registered
+    - measurements: `%{system_time}`
+    - metadata: `%{network, trace_id, mode}` where `mode` is `:call | :cast`
+  - `[:bloccs, :request, :stop]` — the request resolved
+    - measurements: `%{duration}` (native units, since `:start`)
+    - metadata: `%{network, trace_id, mode, outcome}` where `outcome` is
+      `:reply | :error | :timeout`, plus `:error` (the `%Bloccs.EffectError{}` or
+      reason) when the outcome is `:error`. `trace_id` ties the request to the
+      `[:bloccs, :emit]` / `[:bloccs, :node, *]` events of the messages it spawned.
   """
 
   require Logger
@@ -82,7 +95,8 @@ defmodule Bloccs.Telemetry do
     [:bloccs, :node, :skipped],
     [:bloccs, :node, :dropped],
     [:bloccs, :node, :dispatch_error],
-    [:bloccs, :producer, :backpressure]
+    [:bloccs, :producer, :backpressure],
+    [:bloccs, :request, :stop]
   ]
 
   @handler_id "bloccs-default-logger"
@@ -148,6 +162,15 @@ defmodule Bloccs.Telemetry do
       level,
       "bloccs producer #{inspect(meta.name)} back-pressure: buffer full " <>
         "(#{meta.buffer}, size #{size}); caller parked until drained"
+    )
+  end
+
+  def handle_event([:bloccs, :request, :stop], %{duration: dur}, meta, %{level: level}) do
+    ms = System.convert_time_unit(dur, :native, :microsecond) / 1000
+
+    Logger.log(
+      level,
+      "bloccs #{meta.network} #{meta.mode} request #{meta.outcome} in #{Float.round(ms, 2)}ms"
     )
   end
 
