@@ -124,6 +124,51 @@ identifiers are double-quoted, so **Postgres and SQLite3** are supported — for
 other dialects (e.g. MySQL back-ticks) or richer queries (`IN`, ranges, ordering),
 implement the `Bloccs.Effects.DB` behaviour directly.
 
+### Update & delete
+
+Behind `"table:update"` / `"table:delete"` scopes, keyed by primary id:
+
+```elixir
+db = { allow = ["items:update", "items:delete"] }
+```
+
+```elixir
+{:ok, 1} = DB.update(ctx.effects.db, :items, id, %{slug: "y"})        # set a literal
+{:ok, 1} = DB.update(ctx.effects.db, :items, id, %{votes: {:inc, 1}}) # atomic increment
+{:ok, 1} = DB.delete(ctx.effects.db, :items, id)
+```
+
+Both return `{:ok, rows_affected}` (0 or 1). The `{:inc, n}` change compiles to
+`SET col = col + n` — a **read-free atomic increment** (a negative `n`
+decrements), the correct primitive for counters: no read-modify-write race.
+
+### Transactions
+
+`DB.transaction/2` runs a unit of work atomically — a function or a list of ops:
+
+```elixir
+# function form: db is the same capability; inner calls run in the transaction
+{:ok, :ok} =
+  DB.transaction(ctx.effects.db, fn db ->
+    {:ok, _} = DB.insert(db, :votes, item_id: id, voter: who)
+    {:ok, 1} = DB.update(db, :items, id, %{votes: {:inc, 1}})
+    {:ok, :ok}
+  end)
+
+# declarative form: ops run in order, short-circuiting on the first error
+{:ok, [_vote, 1]} =
+  DB.transaction(ctx.effects.db, [
+    {:insert, :votes, [item_id: id, voter: who]},
+    {:update, :items, id, %{votes: {:inc, 1}}}
+  ])
+```
+
+Returning `{:error, reason}` from the function (or any op failing, as
+`{:error, {index, reason}}`) rolls everything back; a raise also rolls back and
+re-raises. Each inner op is scope-checked like a standalone call. `DB.Ecto` maps
+this to `repo.transaction/1` + `repo.rollback/1`; `DB.Mock` snapshots its store
+and restores it on rollback, so tests get real atomicity with no database.
+
 ## Writing a custom backend
 
 Implement the axis behaviour. Enforce the declared scope yourself, then do I/O.

@@ -43,12 +43,12 @@ defmodule Bloccs.Effects.DB.Mock do
 
   @impl true
   def all(%__MODULE__{allow: allow}, table, filter) do
-    with_read(allow, table, fn -> {:ok, rows_matching(table, filter)} end)
+    with_scope(allow, table, "read", fn -> {:ok, rows_matching(table, filter)} end)
   end
 
   @impl true
   def one(%__MODULE__{allow: allow}, table, filter) do
-    with_read(allow, table, fn ->
+    with_scope(allow, table, "read", fn ->
       case rows_matching(table, filter) do
         [] -> {:ok, nil}
         [row] -> {:ok, row}
@@ -57,13 +57,93 @@ defmodule Bloccs.Effects.DB.Mock do
     end)
   end
 
-  defp with_read(allow, table, fun) do
-    scope = "#{table}:read"
+  @impl true
+  def update(%__MODULE__{allow: allow}, table, id, changes) do
+    with_scope(allow, table, "update", fn ->
+      count =
+        update_store(fn list ->
+          {new_list, n} =
+            Enum.map_reduce(list, 0, fn {t, row}, acc ->
+              if to_string(t) == to_string(table) and get_id(row) == id do
+                {{t, apply_changes(stringify(row), changes)}, acc + 1}
+              else
+                {{t, row}, acc}
+              end
+            end)
+
+          {n, new_list}
+        end)
+
+      {:ok, count}
+    end)
+  end
+
+  @impl true
+  def delete(%__MODULE__{allow: allow}, table, id) do
+    with_scope(allow, table, "delete", fn ->
+      count =
+        update_store(fn list ->
+          {kept, removed} =
+            Enum.split_with(list, fn {t, row} ->
+              not (to_string(t) == to_string(table) and get_id(row) == id)
+            end)
+
+          {length(removed), kept}
+        end)
+
+      {:ok, count}
+    end)
+  end
+
+  @impl true
+  def transaction(%__MODULE__{} = cap, fun_or_ops) do
+    snapshot = Agent.get(ensure_pid(), & &1)
+
+    try do
+      case Bloccs.Effects.DB.run_txn(cap, fun_or_ops) do
+        {:ok, _} = ok -> ok
+        {:error, _} = err -> restore(snapshot, err)
+      end
+    rescue
+      e ->
+        Agent.update(ensure_pid(), fn _ -> snapshot end)
+        reraise e, __STACKTRACE__
+    end
+  end
+
+  defp restore(snapshot, result) do
+    Agent.update(ensure_pid(), fn _ -> snapshot end)
+    result
+  end
+
+  defp with_scope(allow, table, action, fun) do
+    scope = "#{table}:#{action}"
 
     if scope in allow,
       do: fun.(),
       else: Effects.deny!(:db, "scope #{scope} not in #{inspect(allow)}")
   end
+
+  # Apply `update/4` changes to a (string-keyed) row: a literal value sets the
+  # column; `{:inc, n}` adds to the current value (treating a missing column as 0).
+  defp apply_changes(srow, changes) do
+    Enum.reduce(changes, srow, fn {col, val}, acc ->
+      key = to_string(col)
+
+      new_val =
+        case val do
+          {:inc, n} -> (Map.get(acc, key) || 0) + n
+          literal -> literal
+        end
+
+      Map.put(acc, key, new_val)
+    end)
+  end
+
+  defp get_id(row), do: Map.get(stringify(row), "id")
+
+  # Transform the whole store atomically; the callback returns `{return, new_list}`.
+  defp update_store(fun), do: Agent.get_and_update(ensure_pid(), fun)
 
   # Rows for `table` in insertion order, string-keyed, filtered by ANDed equality.
   defp rows_matching(table, filter) do

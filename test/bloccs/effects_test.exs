@@ -122,6 +122,102 @@ defmodule Bloccs.EffectsTest do
     end
   end
 
+  describe "DB.Mock mutations + transactions" do
+    setup do
+      MockDB.reset()
+
+      cap =
+        MockDB.new(%{
+          allow: ~w(items:insert items:read items:update items:delete votes:insert votes:read)
+        })
+
+      {:ok, %{id: id}} = MockDB.insert(cap, :items, slug: "x", votes: 0)
+      %{cap: cap, id: id}
+    end
+
+    test "update/4 sets literals and increments with {:inc, n}", %{cap: cap, id: id} do
+      assert {:ok, 1} = MockDB.update(cap, :items, id, %{slug: "y", votes: {:inc, 1}})
+      assert {:ok, %{"slug" => "y", "votes" => 1}} = MockDB.get(cap, :items, id)
+
+      assert {:ok, 1} = MockDB.update(cap, :items, id, %{votes: {:inc, -1}})
+      assert {:ok, %{"votes" => 0}} = MockDB.get(cap, :items, id)
+    end
+
+    test "update/4 returns a 0 count when no row matches", %{cap: cap} do
+      assert {:ok, 0} = MockDB.update(cap, :items, -1, %{slug: "z"})
+    end
+
+    test "update/4 requires an :update scope", %{id: id} do
+      read_only = MockDB.new(%{allow: ["items:read"]})
+
+      assert_raise Bloccs.Effects.Denied, ~r/items:update/, fn ->
+        MockDB.update(read_only, :items, id, %{slug: "z"})
+      end
+    end
+
+    test "delete/3 removes by id and reports the count", %{cap: cap, id: id} do
+      assert {:ok, 1} = MockDB.delete(cap, :items, id)
+      assert {:ok, nil} = MockDB.get(cap, :items, id)
+      assert {:ok, 0} = MockDB.delete(cap, :items, id)
+    end
+
+    test "transaction/2 (closure) commits an atomic insert + counter increment", %{
+      cap: cap,
+      id: id
+    } do
+      assert {:ok, :counted} =
+               MockDB.transaction(cap, fn db ->
+                 {:ok, _} = MockDB.insert(db, :votes, item: id, who: "a")
+                 {:ok, 1} = MockDB.update(db, :items, id, %{votes: {:inc, 1}})
+                 {:ok, :counted}
+               end)
+
+      assert {:ok, %{"votes" => 1}} = MockDB.get(cap, :items, id)
+      assert {:ok, [_one]} = MockDB.all(cap, :votes, %{})
+    end
+
+    test "transaction/2 rolls back every write when the body returns {:error, _}", %{
+      cap: cap,
+      id: id
+    } do
+      assert {:error, :nope} =
+               MockDB.transaction(cap, fn db ->
+                 {:ok, _} = MockDB.insert(db, :votes, item: id, who: "b")
+                 {:ok, 1} = MockDB.update(db, :items, id, %{votes: {:inc, 1}})
+                 {:error, :nope}
+               end)
+
+      # Both the vote insert and the counter increment were undone.
+      assert {:ok, []} = MockDB.all(cap, :votes, %{})
+      assert {:ok, %{"votes" => 0}} = MockDB.get(cap, :items, id)
+    end
+
+    test "transaction/2 rolls back when the body raises", %{cap: cap, id: id} do
+      assert_raise RuntimeError, fn ->
+        MockDB.transaction(cap, fn db ->
+          {:ok, _} = MockDB.insert(db, :votes, item: id, who: "c")
+          raise "boom"
+        end)
+      end
+
+      assert {:ok, []} = MockDB.all(cap, :votes, %{})
+    end
+
+    test "transaction/2 (declarative ops) runs each op, returning per-op results", %{
+      cap: cap,
+      id: id
+    } do
+      # each op's result is unwrapped: the inserted row, then the update count.
+      assert {:ok, [%{} = _vote, 1]} =
+               MockDB.transaction(cap, [
+                 {:insert, :votes, [item: id, who: "d"]},
+                 {:update, :items, id, %{votes: {:inc, 1}}}
+               ])
+
+      assert {:ok, %{"votes" => 1}} = MockDB.get(cap, :items, id)
+    end
+  end
+
   test "time effect", %{node: node} do
     caps = Effects.bind(node)
     assert %DateTime{} = Bloccs.Effects.Time.System.now(caps.time)
