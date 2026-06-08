@@ -6,55 +6,55 @@ defmodule Bloccs.Collector do
   > through those two functions and a `reply = true` node, not by calling it
   > directly.
 
-  Correlates a network's **reply** back to the caller that injected the request.
+  Correlates a network's **reply** (or terminal **error**) back to the caller
+  that injected the request.
 
-  bloccs is otherwise fire-and-forget: `Bloccs.Producer.push/3` returns once the
+  bloccs is otherwise fire-and-forget: `Bloccs.Producer.push/3` returns once a
   message is *admitted*, not once it is *processed*. The collector restores
-  request/response on top of that — without making the pipeline itself
-  synchronous — by reusing the per-message `trace_id`
-  (`Bloccs.Lineage`) as the correlation key:
+  request/response on top of that — without making the pipeline synchronous — by
+  reusing the per-message `trace_id` (`Bloccs.Lineage`) as the correlation key:
 
-    1. `Bloccs.call/4` mints a root lineage (trace_id `T`) and pushes the request.
+    1. `Bloccs.call/4` mints a root lineage (trace_id `T`), **registers** `T` here
+       (so the collector is expecting it *before* the request can fail or reply),
+       then pushes the request.
     2. The request flows through the graph; `trace_id` rides unchanged on every
-       1:1 / split / router hop (a `[batch]`/`[join]` mints a fresh trace, so
-       reply correlation does **not** survive a fan-in — see "Limitations").
-    3. A node declared `reply = true` reports each emitted payload here, keyed by
-       the incoming message's `trace_id`.
-    4. The collector matches `T` and replies to the blocked caller.
+       1:1 / split / router hop.
+    3. A node declared `reply = true` reports its emitted payload here (an
+       `{:ok, payload}` result); a node that fails terminally on the trace reports
+       an `{:error, %Bloccs.EffectError{}}` result. Both are keyed by `T`.
+    4. The collector matches `T` and hands the result to the blocked caller.
 
   A single process serves every running network; entries are keyed by
   `{network_id, trace_id}` so ids never collide across networks.
 
-  ## Ordering / races
+  ## Register-before-push (no races, no fire-and-forget overhead)
 
-  `call/4` pushes **before** it awaits, so a reply can arrive before the waiter
-  registers. Both orders are safe: a report with no waiter is **buffered**
-  (`:ready`) until the matching `await/3` claims it; a waiter with no report yet
-  blocks until the report arrives or the deadline fires. The collector — not the
-  caller — enforces the timeout (the client `GenServer.call/3` uses `:infinity`),
-  so a late report can never crash a timed-out caller.
+  `call/4` / `cast/4` register **synchronously before** pushing, so by the time
+  the message can produce a reply or error, the collector is already expecting it.
+  A result for a key that is **not** registered is dropped immediately (not
+  buffered) — so a plain `Bloccs.Producer.push/3` or a `reply = true` node used in
+  a fire-and-forget pipeline costs the collector nothing beyond an O(1) drop. A
+  result that arrives before the caller blocks on `await/2` is held (`:ready`)
+  until claimed. The timeout is enforced collector-side, so a late result can
+  never crash a timed-out caller.
 
-  ## Limitations (M1)
+  ## Limitations (current milestone)
 
-  - Aggregation is **first-wins**: the first reported payload for a `trace_id` is
-    the result; later ones for the same id are dropped. Fan-out networks with
-    several reply emits per request need the `:all` policy (later milestone).
+  - Aggregation is **first-wins**: the first result reported for a `trace_id` is
+    the answer; later ones for the same id are dropped. Fan-out networks with
+    several reply emits per request need an `:all` policy (later milestone).
   - A `[batch]`/`[join]` on the request path mints a fresh `trace_id`, breaking
-    correlation. Keep the reply node on the request's 1:1 trace for now.
-  - Errors are not yet routed here as data; a failed request surfaces only as a
-    `call/4` timeout. Typed error ports (error-as-data) are the next milestone.
+    correlation — including error correlation. Keep the reply node on the
+    request's 1:1 trace.
   """
 
   use GenServer
 
-  alias Bloccs.Lineage
-
-  # How long a buffered (:ready) report with no waiter is retained before it is
-  # discarded — bounds memory when a `cast/4` reply is never collected.
-  @ready_ttl_ms 30_000
+  alias Bloccs.{EffectError, Lineage}
 
   @type network_id :: atom()
   @type key :: {network_id(), Lineage.id()}
+  @type result :: {:ok, term()} | {:error, EffectError.t()}
 
   # ---------- client API ----------
 
@@ -64,32 +64,54 @@ defmodule Bloccs.Collector do
   end
 
   @doc """
-  Block until the reply for `trace_id` on `network_id` arrives, or `timeout_ms`
-  elapses. Returns `{:ok, payload}` or `{:error, :timeout}`. The timeout is
-  enforced collector-side, so the call itself never raises.
+  Register a blocking (`call/4`) request for `trace_id` on `network_id`, to be
+  collected by `await/2`. Synchronous: returns once the collector is expecting
+  the id, so the caller can push without racing the reply. The `timeout_ms`
+  deadline is enforced collector-side.
   """
-  @spec await(network_id(), Lineage.id(), timeout()) :: {:ok, term()} | {:error, :timeout}
-  def await(network_id, trace_id, timeout_ms) do
-    GenServer.call(__MODULE__, {:await, {network_id, trace_id}, timeout_ms}, :infinity)
+  @spec register(network_id(), Lineage.id(), timeout()) :: :ok
+  def register(network_id, trace_id, timeout_ms) do
+    GenServer.call(__MODULE__, {:register, {network_id, trace_id}, timeout_ms})
   end
 
   @doc """
-  Register an async waiter: when the reply for `trace_id` arrives, `pid` is sent
-  `{:bloccs_reply, trace_id, {:ok, payload}}` (or `{:error, :timeout}` after
-  `timeout_ms`). Used by `Bloccs.cast/4` with `send_result: true`.
+  Register an async (`cast/4` with `send_result: true`) request: when the result
+  for `trace_id` arrives, `pid` is sent `{:bloccs_reply, trace_id, result}` (a
+  `{:ok, payload}` or `{:error, %Bloccs.EffectError{}}`), or
+  `{:bloccs_reply, trace_id, {:error, :timeout}}` after `timeout_ms`.
   """
-  @spec expect_async(network_id(), Lineage.id(), pid(), timeout()) :: :ok
-  def expect_async(network_id, trace_id, pid, timeout_ms) do
-    GenServer.cast(__MODULE__, {:expect_async, {network_id, trace_id}, pid, timeout_ms})
+  @spec register_async(network_id(), Lineage.id(), pid(), timeout()) :: :ok
+  def register_async(network_id, trace_id, pid, timeout_ms) do
+    GenServer.call(__MODULE__, {:register_async, {network_id, trace_id}, pid, timeout_ms})
   end
 
   @doc """
-  Report a reply payload for `trace_id` on `network_id`. Called from the runtime
-  for a `reply = true` node. Non-blocking; the first report for a key wins.
+  Block until the result for a previously `register/3`ed `trace_id` arrives, or
+  its deadline fires. Returns the reported result (`{:ok, payload}` or
+  `{:error, %Bloccs.EffectError{}}`), or `{:error, :timeout}`.
+  """
+  @spec await(network_id(), Lineage.id()) :: result() | {:error, :timeout}
+  def await(network_id, trace_id) do
+    GenServer.call(__MODULE__, {:await, {network_id, trace_id}}, :infinity)
+  end
+
+  @doc """
+  Report a successful reply payload for `trace_id`. Called from the runtime for a
+  `reply = true` node. Dropped if `trace_id` isn't registered; first report wins.
   """
   @spec report(network_id(), Lineage.id(), term()) :: :ok
   def report(network_id, trace_id, payload) do
-    GenServer.cast(__MODULE__, {:report, {network_id, trace_id}, payload})
+    GenServer.cast(__MODULE__, {:report, {network_id, trace_id}, {:ok, payload}})
+  end
+
+  @doc """
+  Report a terminal failure for `trace_id`. Called from the runtime when a node
+  on the trace fails terminally. Dropped if `trace_id` isn't registered; first
+  report wins (a reply already reported takes precedence).
+  """
+  @spec report_error(network_id(), Lineage.id(), EffectError.t()) :: :ok
+  def report_error(network_id, trace_id, %EffectError{} = error) do
+    GenServer.cast(__MODULE__, {:report, {network_id, trace_id}, {:error, error}})
   end
 
   # ---------- server ----------
@@ -98,59 +120,55 @@ defmodule Bloccs.Collector do
   def init(_opts), do: {:ok, %{requests: %{}}}
 
   @impl true
-  def handle_call({:await, key, timeout_ms}, from, %{requests: reqs} = state) do
+  def handle_call({:register, key, timeout_ms}, _from, %{requests: reqs} = state) do
+    tref = Process.send_after(self(), {:expire, key}, timeout_ms)
+    {:reply, :ok, put(state, reqs, key, %{phase: :pending, timer: tref})}
+  end
+
+  def handle_call({:register_async, key, pid, timeout_ms}, _from, %{requests: reqs} = state) do
+    tref = Process.send_after(self(), {:expire, key}, timeout_ms)
+    {:reply, :ok, put(state, reqs, key, %{phase: :async, pid: pid, timer: tref})}
+  end
+
+  def handle_call({:await, key}, from, %{requests: reqs} = state) do
     case Map.get(reqs, key) do
-      %{state: :ready, value: value, timer: tref} ->
+      %{phase: :ready, result: result, timer: tref} ->
         cancel(tref)
-        {:reply, {:ok, value}, %{state | requests: Map.delete(reqs, key)}}
+        {:reply, result, drop(state, reqs, key)}
+
+      %{phase: :pending} = slot ->
+        {:noreply, put(state, reqs, key, Map.merge(slot, %{phase: :waiting, from: from}))}
 
       nil ->
-        tref = Process.send_after(self(), {:expire, key}, timeout_ms)
-        entry = %{state: :waiting, from: from, timer: tref}
-        {:noreply, %{state | requests: Map.put(reqs, key, entry)}}
+        # Already expired (or never registered): treat as a timeout.
+        {:reply, {:error, :timeout}, state}
 
-      _busy ->
+      _already ->
         {:reply, {:error, :already_awaited}, state}
     end
   end
 
   @impl true
-  def handle_cast({:report, key, payload}, %{requests: reqs} = state) do
+  def handle_cast({:report, key, result}, %{requests: reqs} = state) do
     case Map.get(reqs, key) do
-      %{state: :waiting, from: from, timer: tref} ->
+      %{phase: :waiting, from: from, timer: tref} ->
         cancel(tref)
-        GenServer.reply(from, {:ok, payload})
-        {:noreply, %{state | requests: Map.delete(reqs, key)}}
+        GenServer.reply(from, result)
+        {:noreply, drop(state, reqs, key)}
 
-      %{state: :async, pid: pid, timer: tref} ->
+      %{phase: :async, pid: pid, timer: tref} ->
         cancel(tref)
-        send(pid, {:bloccs_reply, elem(key, 1), {:ok, payload}})
-        {:noreply, %{state | requests: Map.delete(reqs, key)}}
+        send(pid, {:bloccs_reply, elem(key, 1), result})
+        {:noreply, drop(state, reqs, key)}
 
-      %{state: :ready} ->
-        # First report already buffered; first-wins, ignore later ones.
-        {:noreply, state}
+      %{phase: :pending} = slot ->
+        # Result beat the awaiter; hold it until await/2 claims it (the deadline
+        # timer keeps running and reaps it if the awaiter never comes).
+        {:noreply,
+         put(state, reqs, key, Map.put(slot, :phase, :ready) |> Map.put(:result, result))}
 
-      nil ->
-        tref = Process.send_after(self(), {:expire, key}, @ready_ttl_ms)
-        entry = %{state: :ready, value: payload, timer: tref}
-        {:noreply, %{state | requests: Map.put(reqs, key, entry)}}
-    end
-  end
-
-  def handle_cast({:expect_async, key, pid, timeout_ms}, %{requests: reqs} = state) do
-    case Map.get(reqs, key) do
-      %{state: :ready, value: value, timer: tref} ->
-        cancel(tref)
-        send(pid, {:bloccs_reply, elem(key, 1), {:ok, value}})
-        {:noreply, %{state | requests: Map.delete(reqs, key)}}
-
-      nil ->
-        tref = Process.send_after(self(), {:expire, key}, timeout_ms)
-        entry = %{state: :async, pid: pid, timer: tref}
-        {:noreply, %{state | requests: Map.put(reqs, key, entry)}}
-
-      _busy ->
+      _ ->
+        # :ready (first-wins) or unregistered (fire-and-forget): drop.
         {:noreply, state}
     end
   end
@@ -158,13 +176,16 @@ defmodule Bloccs.Collector do
   @impl true
   def handle_info({:expire, key}, %{requests: reqs} = state) do
     case Map.get(reqs, key) do
-      %{state: :waiting, from: from} -> GenServer.reply(from, {:error, :timeout})
-      %{state: :async, pid: pid} -> send(pid, {:bloccs_reply, elem(key, 1), {:error, :timeout}})
+      %{phase: :waiting, from: from} -> GenServer.reply(from, {:error, :timeout})
+      %{phase: :async, pid: pid} -> send(pid, {:bloccs_reply, elem(key, 1), {:error, :timeout}})
       _ -> :ok
     end
 
-    {:noreply, %{state | requests: Map.delete(reqs, key)}}
+    {:noreply, drop(state, reqs, key)}
   end
+
+  defp put(state, reqs, key, slot), do: %{state | requests: Map.put(reqs, key, slot)}
+  defp drop(state, reqs, key), do: %{state | requests: Map.delete(reqs, key)}
 
   defp cancel(tref) when is_reference(tref) do
     _ = Process.cancel_timer(tref)

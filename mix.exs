@@ -1,7 +1,7 @@
 defmodule Bloccs.MixProject do
   use Mix.Project
 
-  @version "0.6.0"
+  @version "0.7.0"
   @source_url "https://github.com/Bloccs/bloccs"
 
   def project do
@@ -115,6 +115,7 @@ defmodule Bloccs.MixProject do
         "guides/concepts.md",
         "guides/getting-started.md",
         "guides/primitives.md",
+        "guides/request-response.md",
         "guides/manifest-reference.md",
         "guides/effect-adapters.md",
         "guides/comparison.md",
@@ -140,6 +141,7 @@ defmodule Bloccs.MixProject do
           Bloccs.Context,
           Bloccs.Pipeline
         ],
+        "Request/response": [Bloccs.Collector, Bloccs.EffectError],
         Effects: [~r/^Bloccs\.Effects/],
         Observability: [
           Bloccs.Telemetry,

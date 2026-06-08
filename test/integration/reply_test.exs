@@ -45,17 +45,36 @@ defmodule Bloccs.Integration.ReplyTest do
     assert {:error, :unknown_network} = Bloccs.call(:no_such_network, :request, %{"n" => 1})
   end
 
-  test "call/4 returns {:error, :timeout} when no reply arrives in time" do
-    # A payload that fails the inbound Req@1 schema is dropped before it can
-    # reach the reply node, so the caller times out rather than hanging.
+  test "call/4 returns a typed {:error, %EffectError{}} on an inbound-schema failure" do
+    # A bad payload fails Req@1 at the ingest node; the error comes back as data
+    # rather than as a timeout.
+    assert {:error, %Bloccs.EffectError{phase: :validate, node: :ingest}} =
+             Bloccs.call(:reply_demo, :request, %{"n" => "not-an-int"})
+  end
+
+  test "call/4 returns a typed {:error, %EffectError{}} when the reply node raises" do
+    assert {:error, %Bloccs.EffectError{phase: :execute, node: :price}} =
+             Bloccs.call(:reply_demo, :request, %{"n" => 0})
+  end
+
+  test "call/4 returns {:error, :timeout} when the request is dropped (no reply, no error)" do
+    # A negative total is filtered at the reply node: nothing is emitted and
+    # nothing fails, so the caller times out cleanly instead of hanging.
     assert {:error, :timeout} =
-             Bloccs.call(:reply_demo, :request, %{"n" => "not-an-int"}, timeout: 200)
+             Bloccs.call(:reply_demo, :request, %{"n" => -3}, timeout: 200)
   end
 
   test "cast/4 returns a trace_id and delivers the reply asynchronously" do
     {:ok, trace_id} = Bloccs.cast(:reply_demo, :request, %{"n" => 7}, send_result: true)
     assert is_integer(trace_id)
     assert_receive {:bloccs_reply, ^trace_id, {:ok, %{"total" => 14}}}, 1_000
+  end
+
+  test "cast/4 delivers a typed error asynchronously" do
+    {:ok, trace_id} = Bloccs.cast(:reply_demo, :request, %{"n" => 0}, send_result: true)
+
+    assert_receive {:bloccs_reply, ^trace_id, {:error, %Bloccs.EffectError{phase: :execute}}},
+                   1_000
   end
 
   test "cast/4 without send_result is fire-and-forget but still yields the trace_id" do

@@ -88,6 +88,10 @@ Wired into every generated node:
   plus per-message lineage so a message can be tracked across the graph.
 - **Flow primitives** — transform, filter, split, route, merge,
   aggregate/window (`[batch]`), join, throttle/delay — and subgraph composition.
+- **Request/response** — `Bloccs.call/4` / `cast/4` get a computed result (or a
+  typed error) back from a `reply = true` node, without making the pipeline
+  synchronous. Lets a web layer use a network for request-bound business logic,
+  not just fire-and-forget. See the [request/response guide](guides/request-response.md).
 
 A companion package, [bloccs_web](https://github.com/Bloccs/bloccs_web), is a
 self-hosted dashboard that renders the topology and these telemetry signals live.
@@ -291,6 +295,28 @@ Every declared contract is wired into that runtime, not just parsed:
   silently dropped.
 - **Subgraph composition** — a `[nodes]` entry may `use` a *network* manifest;
   the parser flattens it into namespaced leaf nodes at parse time.
+
+### Request/response
+
+A network is asynchronous by default — push in, side effects out, nothing back.
+`Bloccs.call/4` (blocking) and `Bloccs.cast/4` (async) add request/response on
+top, so a web layer can use a network for request-bound logic, not just
+fire-and-forget. The pipeline itself stays async — only the caller waits.
+
+A terminal node opts in with `reply = true` and emits the response on an out-port:
+
+```elixir
+{:ok, %{"total" => 42}} = Bloccs.call(:checkout, :request, %{"items" => [...]})
+
+# failures come back as data, not as a hang:
+{:error, %Bloccs.EffectError{node: :price, phase: :execute}} =
+  Bloccs.call(:checkout, :request, bad_payload)
+```
+
+Correlation reuses the per-message `trace_id` (`Bloccs.Lineage`): `call/4`
+registers it with `Bloccs.Collector` before pushing, the reply (or a terminal
+error) is matched back to the waiting caller, and an unregistered trace costs
+nothing. See the [request/response guide](guides/request-response.md).
 
 ### Effects: mock by default, real adapters opt-in
 
