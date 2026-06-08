@@ -6,6 +6,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-08
+
+### Added
+
+- **Request/response — `Bloccs.call/4` and `Bloccs.cast/4`.** A network was until
+  now fire-and-forget: `Bloccs.Producer.push/3` returns once a message is
+  *admitted*, never once it is *processed*, so a caller got nothing back. The new
+  functions add request/response on top **without making the pipeline
+  synchronous** — only the calling process waits.
+
+  - A terminal node opts in with `reply = true` in its `[node]` block and emits
+    the response on an out-port.
+  - `Bloccs.call(network_id, in_port, payload, opts)` pushes to an exposed input
+    port and blocks until that node replies, returning `{:ok, reply}` or
+    `{:error, reason}` (`:timeout` | `:no_producer` | `:unknown_network` |
+    `{:unknown_port, port}`). `:timeout` defaults to `5_000` ms.
+  - `Bloccs.cast(network_id, in_port, payload, opts)` returns `{:ok, trace_id}`
+    immediately; with `send_result: true` the caller is later sent
+    `{:bloccs_reply, trace_id, result}`.
+
+  Correlation reuses the per-message `trace_id` (`Bloccs.Lineage`): a new
+  `Bloccs.Collector` process keys an in-flight request on `{network_id, trace_id}`
+  and matches the reply back to the caller, buffering an early reply and enforcing
+  the timeout collector-side (so a late reply can never crash a timed-out caller).
+
+  Limitations this milestone: first-wins aggregation (one reply per request);
+  correlation does not survive a `[batch]`/`[join]` (which mint a fresh
+  `trace_id`); errors are not yet routed back as data (a failed request surfaces
+  as a `call/4` timeout). See `Bloccs.Collector` and
+  `research/12-request-response-primitive.md`.
+
 ## [0.5.0] — 2026-06-07
 
 ### Added

@@ -1,0 +1,16 @@
+[node]
+id      = "reply_ingest"
+version = "0.1.0"
+kind    = "source"
+
+[ports.in]
+request = { schema = "Req@1" }
+
+[ports.out]
+out = { schema = "Req@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.ReplyFixtures.Ingest.transform/2"
+effect_shell = "Bloccs.Integration.ReplyFixtures.Ingest.execute/2"

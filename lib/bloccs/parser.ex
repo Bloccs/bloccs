@@ -142,6 +142,7 @@ defmodule Bloccs.Parser do
         join: fields[:join],
         rate: fields[:rate],
         delay_ms: fields[:delay_ms],
+        reply: meta.reply,
         observability: fields[:observability] || %{}
       }
 
@@ -212,10 +213,13 @@ defmodule Bloccs.Parser do
   defp fetch_raw(map, :delay_ms), do: Map.get(map, "delay", :missing)
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
 
-  defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k}) do
+  defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k} = map) do
     case Node.cast_kind(k) do
-      {:ok, kind} -> {:ok, %{id: id, version: v, kind: kind}}
-      :error -> {:error, [%Error{message: "unknown node kind #{inspect(k)}"}]}
+      {:ok, kind} ->
+        {:ok, %{id: id, version: v, kind: kind, reply: Map.get(map, "reply", false) == true}}
+
+      :error ->
+        {:error, [%Error{message: "unknown node kind #{inspect(k)}"}]}
     end
   end
 

@@ -1,0 +1,17 @@
+[node]
+id      = "reply_price"
+version = "0.1.0"
+kind    = "sink"
+reply   = true
+
+[ports.in]
+request = { schema = "Req@1" }
+
+[ports.out]
+reply = { schema = "Res@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.ReplyFixtures.Price.transform/2"
+effect_shell = "Bloccs.Integration.ReplyFixtures.Price.execute/2"
