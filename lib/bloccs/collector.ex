@@ -38,6 +38,18 @@ defmodule Bloccs.Collector do
   until claimed. The timeout is enforced collector-side, so a late result can
   never crash a timed-out caller.
 
+  ## Observability
+
+  The request/response lifecycle is observable two ways (for the dashboard / your
+  own handlers):
+
+  - **Telemetry** — `[:bloccs, :request, :start]` when a request registers and
+    `[:bloccs, :request, :stop]` when it resolves (with `:outcome`
+    `:reply | :error | :timeout`, a `:duration`, and the `%Bloccs.EffectError{}`
+    under `:error` on a failure). See `Bloccs.Telemetry`.
+  - **Snapshot** — `stats/0` returns the current in-flight request count, total
+    and per network.
+
   ## Limitations (current milestone)
 
   - Aggregation is **first-wins**: the first result reported for a `trace_id` is
@@ -114,6 +126,13 @@ defmodule Bloccs.Collector do
     GenServer.cast(__MODULE__, {:report, {network_id, trace_id}, {:error, error}})
   end
 
+  @doc """
+  A snapshot of in-flight request/response state: the total still awaiting a
+  result, and a per-network breakdown. For observability (e.g. a dashboard gauge).
+  """
+  @spec stats() :: %{in_flight: non_neg_integer(), by_network: %{network_id() => pos_integer()}}
+  def stats, do: GenServer.call(__MODULE__, :stats)
+
   # ---------- server ----------
 
   @impl true
@@ -122,18 +141,26 @@ defmodule Bloccs.Collector do
   @impl true
   def handle_call({:register, key, timeout_ms}, _from, %{requests: reqs} = state) do
     tref = Process.send_after(self(), {:expire, key}, timeout_ms)
-    {:reply, :ok, put(state, reqs, key, %{phase: :pending, timer: tref})}
+    emit_start(key, :call)
+    {:reply, :ok, put(state, reqs, key, new_slot(:pending, tref, :call, []))}
   end
 
   def handle_call({:register_async, key, pid, timeout_ms}, _from, %{requests: reqs} = state) do
     tref = Process.send_after(self(), {:expire, key}, timeout_ms)
-    {:reply, :ok, put(state, reqs, key, %{phase: :async, pid: pid, timer: tref})}
+    emit_start(key, :cast)
+    {:reply, :ok, put(state, reqs, key, new_slot(:async, tref, :cast, pid: pid))}
+  end
+
+  def handle_call(:stats, _from, %{requests: reqs} = state) do
+    by_network = reqs |> Map.keys() |> Enum.frequencies_by(fn {nid, _tid} -> nid end)
+    {:reply, %{in_flight: map_size(reqs), by_network: by_network}, state}
   end
 
   def handle_call({:await, key}, from, %{requests: reqs} = state) do
     case Map.get(reqs, key) do
-      %{phase: :ready, result: result, timer: tref} ->
+      %{phase: :ready, result: result, timer: tref} = slot ->
         cancel(tref)
+        emit_stop(key, slot, result)
         {:reply, result, drop(state, reqs, key)}
 
       %{phase: :pending} = slot ->
@@ -151,14 +178,16 @@ defmodule Bloccs.Collector do
   @impl true
   def handle_cast({:report, key, result}, %{requests: reqs} = state) do
     case Map.get(reqs, key) do
-      %{phase: :waiting, from: from, timer: tref} ->
+      %{phase: :waiting, from: from, timer: tref} = slot ->
         cancel(tref)
         GenServer.reply(from, result)
+        emit_stop(key, slot, result)
         {:noreply, drop(state, reqs, key)}
 
-      %{phase: :async, pid: pid, timer: tref} ->
+      %{phase: :async, pid: pid, timer: tref} = slot ->
         cancel(tref)
         send(pid, {:bloccs_reply, elem(key, 1), result})
+        emit_stop(key, slot, result)
         {:noreply, drop(state, reqs, key)}
 
       %{phase: :pending} = slot ->
@@ -176,9 +205,20 @@ defmodule Bloccs.Collector do
   @impl true
   def handle_info({:expire, key}, %{requests: reqs} = state) do
     case Map.get(reqs, key) do
-      %{phase: :waiting, from: from} -> GenServer.reply(from, {:error, :timeout})
-      %{phase: :async, pid: pid} -> send(pid, {:bloccs_reply, elem(key, 1), {:error, :timeout}})
-      _ -> :ok
+      %{phase: :waiting, from: from} = slot ->
+        GenServer.reply(from, {:error, :timeout})
+        emit_stop(key, slot, {:error, :timeout})
+
+      %{phase: :async, pid: pid} = slot ->
+        send(pid, {:bloccs_reply, elem(key, 1), {:error, :timeout}})
+        emit_stop(key, slot, {:error, :timeout})
+
+      %{} = slot ->
+        # Registered but never awaited / a buffered result never claimed.
+        emit_stop(key, slot, {:error, :timeout})
+
+      nil ->
+        :ok
     end
 
     {:noreply, drop(state, reqs, key)}
@@ -186,6 +226,34 @@ defmodule Bloccs.Collector do
 
   defp put(state, reqs, key, slot), do: %{state | requests: Map.put(reqs, key, slot)}
   defp drop(state, reqs, key), do: %{state | requests: Map.delete(reqs, key)}
+
+  defp new_slot(phase, tref, mode, extra) do
+    Enum.into(extra, %{phase: phase, mode: mode, timer: tref, started_at: System.monotonic_time()})
+  end
+
+  # ---------- telemetry ----------
+
+  defp emit_start({network, trace}, mode) do
+    :telemetry.execute(
+      [:bloccs, :request, :start],
+      %{system_time: System.system_time()},
+      %{network: network, trace_id: trace, mode: mode}
+    )
+  end
+
+  defp emit_stop({network, trace}, %{mode: mode, started_at: t0}, result) do
+    :telemetry.execute(
+      [:bloccs, :request, :stop],
+      %{duration: System.monotonic_time() - t0},
+      %{network: network, trace_id: trace, mode: mode}
+      |> Map.merge(outcome_meta(result))
+    )
+  end
+
+  defp outcome_meta({:ok, _}), do: %{outcome: :reply}
+  defp outcome_meta({:error, %EffectError{} = e}), do: %{outcome: :error, error: e}
+  defp outcome_meta({:error, :timeout}), do: %{outcome: :timeout}
+  defp outcome_meta({:error, reason}), do: %{outcome: :error, error: reason}
 
   defp cancel(tref) when is_reference(tref) do
     _ = Process.cancel_timer(tref)

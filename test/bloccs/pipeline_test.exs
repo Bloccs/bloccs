@@ -30,7 +30,14 @@ defmodule Bloccs.PipelineTest do
 
   setup do
     Schema.clear!()
-    on_exit(fn -> Schema.clear!() end)
+
+    on_exit(fn ->
+      Schema.clear!()
+      # Restore the global defaults so a test that toggles them (e.g. the
+      # `:validate_inbound` disabled case) can't leak into a later test module.
+      Application.delete_env(:bloccs, :validate_inbound)
+      Application.delete_env(:bloccs, :require_schemas)
+    end)
 
     Application.put_env(:bloccs, :validate_inbound, true)
     Application.delete_env(:bloccs, :require_schemas)
