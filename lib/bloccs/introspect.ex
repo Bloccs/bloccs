@@ -99,12 +99,20 @@ defmodule Bloccs.Introspect do
       ports_in: ports(manifest.ports_in),
       ports_out: ports(manifest.ports_out),
       effects: Effects.declared(manifest.effects),
+      effect_detail: effect_detail(manifest.effects),
+      reply: manifest.reply,
       concurrency: concurrency,
       doc: doc(manifest.doc),
       contract: contract(manifest.contract),
       config: config(manifest)
     }
   end
+
+  # The declared detail per effect axis (`nil` where the axis isn't declared) —
+  # so an observer can render *what* a node may reach, not just *which* axes.
+  # `db` carries its `allow` scopes (`"table:read"`, `"table:insert"`, …); `http`
+  # its allowed hosts + methods.
+  defp effect_detail(effects), do: Map.take(effects, [:http, :db, :time, :random])
 
   defp ports(map) do
     Enum.map(map, fn {name, %Port{} = p} -> %{name: name, schema: p.schema, buffer: p.buffer} end)

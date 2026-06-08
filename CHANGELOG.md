@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-08
+
+### Added
+
+- **Introspection exposes `reply` and per-axis effect detail.** Each node view
+  from `Bloccs.Introspect.network/1` now carries:
+  - `reply` — the node's `reply = true` flag (request/response terminal), so an
+    observer can mark reply nodes.
+  - `effect_detail` — the declared detail per effect axis (`nil` when undeclared):
+    `db` carries its `allow` scopes (`"table:read"`, `"table:insert"`, …), `http`
+    its allowed hosts + methods, `time`/`random` their modes. The existing
+    `effects` field (the list of declared axes) is unchanged.
+
+  Additive — existing fields keep their shape. This lets observability tools
+  (e.g. the bloccs_web dashboard) surface reply nodes and DB read/write scopes
+  that 0.6.0 / 0.7.0 introduced.
+
 ## [0.7.0] — 2026-06-08
 
 ### Added
