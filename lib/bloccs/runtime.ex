@@ -238,7 +238,7 @@ defmodule Bloccs.Runtime do
       :proceed ->
         case Pipeline.validate_inbound(manifest, in_port, msg.data) do
           :ok -> run(msg, cfg, dedup)
-          {:error, reason} -> fail_or_retry(msg, reason, cfg, dedup)
+          {:error, reason} -> fail_or_retry(msg, reason, cfg, dedup, :validate)
         end
     end
   end
@@ -249,7 +249,7 @@ defmodule Bloccs.Runtime do
 
     case execute(manifest, data, ctx, manifest.contract.timeout_ms) do
       {:emits, emits} -> dispatch_emits(emits, msg, cfg, dedup)
-      {:error, reason} -> fail_or_retry(msg, reason, cfg, dedup)
+      {:error, reason} -> fail_or_retry(msg, reason, cfg, dedup, :execute)
     end
   end
 
@@ -280,6 +280,7 @@ defmodule Bloccs.Runtime do
         msg
 
       failures ->
+        report_error(msg, cfg, :dispatch, {:dispatch_failed, failures})
         emit(:dispatch_error, %{count: length(failures)}, cfg, msg, %{failures: failures})
         Message.failed(msg, {:dispatch_failed, failures})
     end
@@ -316,11 +317,34 @@ defmodule Bloccs.Runtime do
 
   defp maybe_reply(_emits, _msg, _cfg), do: :ok
 
+  # Counterpart to `maybe_reply` for the failure path: when a node on the trace
+  # fails *terminally*, report a typed error to the collector keyed by the
+  # incoming message's trace_id, so a `Bloccs.call/4` caller gets
+  # `{:error, %Bloccs.EffectError{}}` instead of waiting out the timeout. The
+  # collector drops it for free if no caller registered the trace.
+  defp report_error(%Message{metadata: meta} = msg, %Config{} = cfg, phase, reason) do
+    case Bloccs.Lineage.of(meta) do
+      %{trace_id: trace} ->
+        Bloccs.Collector.report_error(cfg.network_id, trace, %Bloccs.EffectError{
+          network: cfg.network_id,
+          node: cfg.local_id,
+          phase: phase,
+          attempt: attempt(msg),
+          reason: reason
+        })
+
+      _ ->
+        :ok
+    end
+  end
+
   # On failure, consult the node's retry policy. If the reason is retriable and
   # attempts remain, schedule a backed-off re-enqueue into this node's own
   # producer (carrying an incremented attempt count) and ack the current
   # delivery — a fresh delivery now owns the work. Otherwise fail the message.
-  defp fail_or_retry(%Message{} = msg, reason, %Config{} = cfg, dedup) do
+  # `phase` (`:validate` | `:execute`) is where the failure arose, carried into
+  # the typed error a request/response caller receives.
+  defp fail_or_retry(%Message{} = msg, reason, %Config{} = cfg, dedup, phase) do
     policy = cfg.manifest.contract.retry
     attempt = attempt(msg)
 
@@ -335,8 +359,10 @@ defmodule Bloccs.Runtime do
       # Keep the reservation — the scheduled retry will complete or release it.
       msg
     else
-      # Terminal failure: release the reservation so the key can be reprocessed.
+      # Terminal failure: release the reservation so the key can be reprocessed,
+      # and surface the failure to any waiting request/response caller.
       release(dedup)
+      report_error(msg, cfg, phase, reason)
       Message.failed(msg, reason)
     end
   end

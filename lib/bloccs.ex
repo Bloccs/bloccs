@@ -54,19 +54,28 @@ defmodule Bloccs do
   Push `payload` into the exposed input port `in_port` of running network
   `network_id` and **block** until a `reply = true` node responds.
 
-  Returns `{:ok, reply_payload}`, or `{:error, reason}` where reason is
-  `:timeout` (no reply within `:timeout` ms, default `5_000`), `:no_producer`,
-  `:unknown_network`, or `{:unknown_port, in_port}`.
+  Returns `{:ok, reply_payload}` on success, or `{:error, reason}` where reason
+  is one of:
+
+  - `%Bloccs.EffectError{}` — a node on the request's trace failed terminally
+    (bad inbound schema, the node raised / returned `{:error, _}` / timed out, or
+    downstream delivery failed). The struct names the node and phase.
+  - `:timeout` — no reply *and* no error within `:timeout` ms (default `5_000`),
+    e.g. the request was filtered/dropped before reaching the reply node.
+  - `:no_producer` | `:unknown_network` | `{:unknown_port, in_port}` — the
+    request could not be admitted.
 
   The network keeps running asynchronously; only the calling process waits.
   """
-  @spec call(network_id(), atom(), term(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec call(network_id(), atom(), term(), keyword()) ::
+          {:ok, term()} | {:error, Bloccs.EffectError.t() | term()}
   def call(network_id, in_port, payload, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 5_000)
 
     with {:ok, producer, trace_id, meta} <- prepare(network_id, in_port),
+         :ok <- Collector.register(network_id, trace_id, timeout),
          :ok <- push(producer, payload, meta) do
-      Collector.await(network_id, trace_id, timeout)
+      Collector.await(network_id, trace_id)
     end
   end
 
@@ -76,9 +85,9 @@ defmodule Bloccs do
   for the request.
 
   With `send_result: true`, the calling process is later sent
-  `{:bloccs_reply, trace_id, {:ok, payload}}` when a `reply = true` node responds,
-  or `{:bloccs_reply, trace_id, {:error, :timeout}}` after `:timeout` ms
-  (default `5_000`). Without it, the request is fire-and-forget and the returned
+  `{:bloccs_reply, trace_id, result}` where `result` is `{:ok, payload}`,
+  `{:error, %Bloccs.EffectError{}}`, or `{:error, :timeout}` (after `:timeout` ms,
+  default `5_000`). Without it, the request is fire-and-forget and the returned
   `trace_id` is useful only for correlating telemetry / traces.
   """
   @spec cast(network_id(), atom(), term(), keyword()) ::
@@ -86,7 +95,7 @@ defmodule Bloccs do
   def cast(network_id, in_port, payload, opts \\ []) do
     with {:ok, producer, trace_id, meta} <- prepare(network_id, in_port) do
       if Keyword.get(opts, :send_result, false) do
-        Collector.expect_async(network_id, trace_id, self(), Keyword.get(opts, :timeout, 5_000))
+        Collector.register_async(network_id, trace_id, self(), Keyword.get(opts, :timeout, 5_000))
       end
 
       case push(producer, payload, meta) do
