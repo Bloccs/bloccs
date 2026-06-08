@@ -74,12 +74,15 @@ defmodule Bloccs.LineageTest do
 
   describe "stamp/1" do
     test "mints a fresh msg_id and keeps the context's parents + trace" do
-      ctx = %{parents: [7, 9], trace_id: 3}
+      # Negative sentinel ids: minted ids are always positive
+      # (`System.unique_integer([:positive, …])`), so the freshness check can
+      # never collide with them no matter where the global counter currently is.
+      ctx = %{parents: [-7, -9], trace_id: -3}
       l = Lineage.stamp(ctx)
 
-      assert l.parents == [7, 9]
-      assert l.trace_id == 3
-      assert is_integer(l.msg_id) and l.msg_id not in [7, 9, 3]
+      assert l.parents == [-7, -9]
+      assert l.trace_id == -3
+      assert is_integer(l.msg_id) and l.msg_id not in [-7, -9, -3]
     end
 
     test "each stamp of the same context is a distinct message" do

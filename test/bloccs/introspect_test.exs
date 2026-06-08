@@ -107,6 +107,20 @@ defmodule Bloccs.IntrospectTest do
       assert by_id[:persist].kind == :sink and by_id[:persist].glyph == :sink
     end
 
+    test "exposes per-axis effect_detail (scopes / hosts) and the reply flag", %{net: net} do
+      by_id = Map.new(net.nodes, &{&1.id, &1})
+
+      # http nodes carry their allowed hosts + methods; db nodes their scopes.
+      assert by_id[:enrich].effect_detail.http == %{allow: ["enrichment.local"], methods: ["GET"]}
+      assert by_id[:persist].effect_detail.db == %{allow: ["events:insert"]}
+      # an axis the node doesn't declare is nil.
+      assert by_id[:validate].effect_detail.http == nil
+      assert by_id[:validate].effect_detail.db == nil
+
+      # reply defaults to false; this example has no reply node.
+      assert Enum.all?(net.nodes, &(&1.reply == false))
+    end
+
     test "carries per-node concurrency from the deploy block", %{net: net} do
       by_id = Map.new(net.nodes, &{&1.id, &1})
       assert by_id[:enrich].concurrency == 4

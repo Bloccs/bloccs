@@ -30,6 +30,18 @@ defmodule Bloccs.Introspect.Network do
           delay_ms: pos_integer() | nil
         }
 
+  @typedoc """
+  The declared detail per effect axis (`nil` when the axis isn't declared): `db`
+  carries its `allow` scopes (`"table:read"`, `"table:insert"`, …), `http` its
+  allowed hosts + methods.
+  """
+  @type effect_detail_view :: %{
+          http: %{allow: [String.t()], methods: [String.t()]} | nil,
+          db: %{allow: [String.t()]} | nil,
+          time: String.t() | nil,
+          random: String.t() | nil
+        }
+
   @typedoc "A node's drawable identity: kind + the canonical notation glyph."
   @type node_view :: %{
           id: atom(),
@@ -38,6 +50,8 @@ defmodule Bloccs.Introspect.Network do
           ports_in: [port_view()],
           ports_out: [port_view()],
           effects: [:http | :db | :time | :random],
+          effect_detail: effect_detail_view(),
+          reply: boolean(),
           concurrency: pos_integer(),
           doc: %{intent: String.t() | nil, owner: String.t() | nil},
           contract: contract_view(),
