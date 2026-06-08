@@ -6,7 +6,30 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.6.0] — 2026-06-08
+## [0.7.0] — 2026-06-08
+
+### Added
+
+- **DB reads — `Bloccs.Effects.DB.get/3`, `all/3`, `one/3`.** The `db` effect was
+  write-only; it can now read, behind a new `"table:read"` scope (declare it
+  alongside `"table:insert"` in `[effects].db.allow`). `get/3` fetches by primary
+  key (`id`); `all/3` / `one/3` take an ANDed equality filter (`%{column =>
+  value}`, empty = all). Rows return as **string-keyed maps** from both backends,
+  so node logic is backend-agnostic. `one/3` returns `{:ok, nil}` for no match and
+  `{:error, :multiple_results}` for more than one.
+
+  - `DB.Mock` serves reads from its in-memory insert log (still hermetic, no DB).
+  - `DB.Ecto` runs a parameterized `repo.query!/2` — the only read path needing no
+    compile-time `Ecto.Query` macro, preserving the "no Ecto unless you use the DB
+    axis" guarantee. Placeholders are adapter-detected (`$n` for Postgres, `?`
+    otherwise) and identifiers double-quoted, so **Postgres and SQLite3** are
+    supported; richer queries / other dialects → implement the `Bloccs.Effects.DB`
+    behaviour directly.
+
+  A read is an effect (lives in `effect_shell`); together with `Bloccs.call/4` this
+  enables the *receive → read → decide → write → reply* shape. Update/delete and
+  transactions are the next milestones (see
+  `research/13-db-read-write-effect.md`).
 
 ### Added
 
