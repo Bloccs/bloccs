@@ -6,6 +6,86 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-11
+
+A hardening release: every change makes an existing guarantee true rather than
+adding surface. No manifest-format changes; one new telemetry event.
+
+### Security
+
+- **HTTP redirects are re-checked against the allowlist on every hop.**
+  `Bloccs.Effects.HTTP.Req` previously let Req auto-follow 3xx responses to
+  *any* host — a declared host that redirected to an undeclared one (e.g. a
+  cloud metadata address) was silently followed. Auto-redirect is now off;
+  each hop's **host and method** are re-validated before the request is made,
+  capped at 10 hops (`{:error, {:too_many_redirects, url}}` beyond). A 303 —
+  and 301/302 on a non-GET — downgrades to a body-less GET, which is also
+  re-checked. Host matching is now case-insensitive, matching DNS.
+- **SQL identifiers are validated in `Bloccs.Effects.DB.Ecto`.** Table and
+  column names (insert attrs, read filters, update changes) were interpolated
+  into SQL unvalidated — values were parameterized, but a column name derived
+  from a message payload was an injection vector. Every identifier must now
+  match `[A-Za-z_][A-Za-z0-9_]*`; anything else raises
+  `Bloccs.Effects.Denied` before any SQL is built.
+- **`random = "crypto"` is now cryptographic.** Both modes previously drew
+  from `:rand` (predictable). Crypto mode now uses
+  `:crypto.strong_rand_bytes/1` via unbiased rejection sampling. An
+  unrecognized mode is denied on first use instead of minting an atom from
+  manifest input.
+- **No more payload-driven atom creation.** Validating a `{:list, _}` schema
+  field minted one atom per element per validation (atoms are never GC'd — a
+  single large hostile payload could crash the VM); element names in error
+  messages are now plain binaries. `Bloccs.Trace.load/1` now decodes node/port
+  names with `String.to_existing_atom/1` and drops events referencing unknown
+  names — a corrupt or hostile `.bloccs-trace` can no longer grow the atom
+  table.
+
+### Fixed
+
+- **The parser is total over malformed TOML.** Five malformed-but-valid-TOML
+  shapes (dotless or non-string `[expose]` endpoints, non-string `[join]`
+  `deadletter`, non-string entries in `http.methods`, non-string `use` paths,
+  non-table `[deploy].concurrency`) crashed with raw exceptions instead of the
+  structured errors the parser promises. All now return `%Bloccs.Parser.Error{}`s.
+- **`[effects]` misdeclarations are parse errors, not silent nils.** An
+  unknown axis (e.g. a typo'd `htttp`) or a misshapen `http`/`db`/`time`/`random`
+  declaration was silently discarded — indistinguishable from "nothing
+  declared", surfacing only as an inexplicable capability denial at runtime.
+- **Cycle detection is linear-time.** The DFS's memoization set was never
+  written to, so diamond-shaped DAGs enumerated O(2^depth) paths — a 61-node
+  diamond chain took ~3 s to validate and ~90 nodes effectively hung the CLI.
+  Validation of a 121-node diamond chain is now sub-millisecond.
+- **The compile-time effect warning now fires in consumer apps.** The
+  undeclared-effect AST check depended on a dev/test-only dependency
+  (`ex_ast`), so it silently never ran when bloccs was used as a dependency —
+  exactly where it matters. It is now a dependency-free `Macro.prewalk`, and
+  matches the `.effects.<axis>` chain on **any** context variable name (no
+  longer only `ctx`). The `ex_ast` dependency is gone.
+- **Router restarts no longer silently destroy routing.** Edge tables moved
+  from Router state to `:persistent_term` (written once per network boot):
+  previously a Router restart meant every subsequent dispatch found zero
+  targets and **acked successfully into the void**. Dispatch to a network with
+  no registered table now fails loudly (`:network_not_registered` + a
+  `[:bloccs, :dispatch, :error]` event), and edge lookups no longer serialize
+  through the singleton. Adds `Bloccs.Router.unregister/1`.
+- **Retries survive producer restarts.** A scheduled retry targeted the
+  producer *pid* captured at schedule time — if the producer restarted before
+  the timer fired, the retry vanished silently and its idempotency key stayed
+  wedged until the TTL sweep. The timer now re-resolves the canonical name at
+  fire time; a retry that still can't be delivered emits the new
+  `[:bloccs, :producer, :enqueue_lost]` event and releases its reservation. A
+  retry that can't even be *scheduled* fails the message instead of acking it.
+- **`Bloccs.call/4` with `timeout: :infinity` no longer kills the Collector**
+  (and every in-flight request across all networks with it). Infinite
+  deadlines simply skip the expiry timer.
+
+### Added
+
+- `[:bloccs, :producer, :enqueue_lost]` telemetry — emitted when a scheduled
+  re-enqueue (retry) cannot be delivered because its producer is gone. The
+  loss windows of a non-durable runtime are unchanged; this release's rule is
+  that none of them may be *silent*.
+
 ## [0.8.0] — 2026-06-08
 
 ### Added
@@ -274,7 +354,11 @@ First public release.
 - **Cyclic networks** are out of scope (DAG-only); feedback loops need a
   deadlock-safe edge mode still on the roadmap.
 
-[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Bloccs/bloccs/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Bloccs/bloccs/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/Bloccs/bloccs/compare/v0.7.0...v0.8.0
+[0.7.0]: https://github.com/Bloccs/bloccs/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/Bloccs/bloccs/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/Bloccs/bloccs/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Bloccs/bloccs/compare/v0.3.0...v0.4.0
 [0.1.1]: https://github.com/Bloccs/bloccs/compare/v0.1.0...v0.1.1

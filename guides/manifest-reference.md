@@ -62,10 +62,15 @@ An undeclared axis is refused at runtime; a declared one is allowlist-enforced.
 
 | axis | type | meaning |
 |---|---|---|
-| `http` | `{ allow = [host, …], methods = [method, …] }` | outbound HTTP, restricted to those hosts + methods |
+| `http` | `{ allow = [host, …], methods = [method, …] }` | outbound HTTP, restricted to those hosts + methods (re-checked on every redirect hop) |
 | `db` | `{ allow = [scope, …] }` | DB ops, each scope a `"table:action"` string |
 | `time` | `"wall_clock"` \| `"none"` | clock access |
-| `random` | `"none"` \| `"pseudo"` \| `"crypto"` | randomness source |
+| `random` | `"none"` \| `"pseudo"` \| `"crypto"` | randomness source (`"crypto"` draws from `:crypto.strong_rand_bytes/1`) |
+
+> Misdeclarations are **parse errors**, not silent denials: an unknown axis
+> (e.g. a typo'd `htttp`) or a misshapen declaration (`allow` not a list of
+> strings, a non-string `time`/`random`) fails `mix bloccs.validate` rather
+> than being treated as "nothing declared".
 
 ```toml
 [effects]
