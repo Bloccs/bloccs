@@ -140,16 +140,22 @@ defmodule Bloccs.Collector do
 
   @impl true
   def handle_call({:register, key, timeout_ms}, _from, %{requests: reqs} = state) do
-    tref = Process.send_after(self(), {:expire, key}, timeout_ms)
+    tref = schedule_expire(key, timeout_ms)
     emit_start(key, :call)
     {:reply, :ok, put(state, reqs, key, new_slot(:pending, tref, :call, []))}
   end
 
   def handle_call({:register_async, key, pid, timeout_ms}, _from, %{requests: reqs} = state) do
-    tref = Process.send_after(self(), {:expire, key}, timeout_ms)
+    tref = schedule_expire(key, timeout_ms)
     emit_start(key, :cast)
     {:reply, :ok, put(state, reqs, key, new_slot(:async, tref, :cast, pid: pid))}
   end
+
+  # `timeout()` includes :infinity, which Process.send_after rejects with an
+  # ArgumentError — inside handle_call that would kill the collector and with
+  # it every in-flight request across all networks. No deadline, no timer.
+  defp schedule_expire(_key, :infinity), do: nil
+  defp schedule_expire(key, timeout_ms), do: Process.send_after(self(), {:expire, key}, timeout_ms)
 
   def handle_call(:stats, _from, %{requests: reqs} = state) do
     by_network = reqs |> Map.keys() |> Enum.frequencies_by(fn {nid, _tid} -> nid end)
