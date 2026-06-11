@@ -579,33 +579,47 @@ defmodule Bloccs.Validator do
   end
 
   defp detect_cycle(nodes, adjacency) do
-    Enum.reduce_while(nodes, :ok, fn n, _ ->
-      case dfs(n, adjacency, MapSet.new(), []) do
-        :ok -> {:cont, :ok}
+    nodes
+    |> Enum.reduce_while(MapSet.new(), fn n, done ->
+      case dfs(n, adjacency, done, []) do
+        {:ok, done} -> {:cont, done}
         {:cycle, p} -> {:halt, {:cycle, p}}
       end
     end)
+    |> case do
+      {:cycle, p} -> {:cycle, p}
+      %MapSet{} -> :ok
+    end
   end
 
-  defp dfs(node, adjacency, visiting, path) do
+  # Colored DFS: `path` is the grey stack (revisiting it = cycle), `done` is
+  # the black set, threaded through every call and across roots so each node
+  # is expanded at most once. Without it, diamond-shaped DAGs explode to
+  # O(2^depth) path enumerations.
+  defp dfs(node, adjacency, done, path) do
     cond do
       node in path ->
         cycle = path |> Enum.reverse() |> Enum.drop_while(&(&1 != node))
         {:cycle, cycle ++ [node]}
 
-      MapSet.member?(visiting, node) ->
-        :ok
+      MapSet.member?(done, node) ->
+        {:ok, done}
 
       true ->
         children = Map.get(adjacency, node, [])
         new_path = [node | path]
 
-        Enum.reduce_while(children, :ok, fn child, _ ->
-          case dfs(child, adjacency, visiting, new_path) do
-            :ok -> {:cont, :ok}
+        children
+        |> Enum.reduce_while({:ok, done}, fn child, {:ok, acc_done} ->
+          case dfs(child, adjacency, acc_done, new_path) do
+            {:ok, d} -> {:cont, {:ok, d}}
             err -> {:halt, err}
           end
         end)
+        |> case do
+          {:ok, d} -> {:ok, MapSet.put(d, node)}
+          err -> err
+        end
     end
   end
 

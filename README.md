@@ -105,7 +105,7 @@ self-hosted dashboard that renders the topology and these telemetry signals live
 
 ```elixir
 def deps do
-  [{:bloccs, "~> 0.5"}]
+  [{:bloccs, "~> 0.9"}]
 end
 ```
 
@@ -195,6 +195,12 @@ reaches for an undeclared axis:
 warning: bloccs: effect :http used in effect_shell but not declared in
          [effects]. Declared: [].
 ```
+
+The allowlist holds across redirects too: the real HTTP backend re-checks
+every 3xx hop's host and method before following it, so a declared host that
+redirects to an undeclared one is denied, not followed. And a *misdeclared*
+`[effects]` block — a typo'd axis, a non-list allowlist — is a validation
+error, never silently treated as "nothing declared".
 
 Typed edges and capability-scoped effects are the two guarantees that make a
 bloccs graph safer than the same graph hand-wired.
@@ -292,7 +298,9 @@ Every declared contract is wired into that runtime, not just parsed:
 - **Observability** — `:telemetry.span([:bloccs, :node], …)` plus `:emit`,
   `:retry`, `:skipped`, and `:dispatch_error` events (see `Bloccs.Telemetry`).
   A failed downstream delivery is surfaced (telemetry + a failed message), never
-  silently dropped.
+  silently dropped — including a scheduled retry whose producer disappeared
+  before it fired (`[:bloccs, :producer, :enqueue_lost]`, which also releases
+  the message's idempotency reservation).
 - **Subgraph composition** — a `[nodes]` entry may `use` a *network* manifest;
   the parser flattens it into namespaced leaf nodes at parse time.
 

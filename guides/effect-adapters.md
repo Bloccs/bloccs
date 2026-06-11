@@ -48,7 +48,16 @@ Built on [Req](https://hexdocs.pm/req). The declared `allow` hosts + `methods`
 are enforced by `Bloccs.Effects.HTTP.Allowlist` **before any request leaves the
 VM** — the identical check the mock runs — so the capability guarantee holds in
 production. A denied call raises `Bloccs.Effects.Denied` (the runtime turns it
-into a failed message).
+into a failed message). Host matching is case-insensitive (DNS is).
+
+**Redirects are re-checked per hop.** Req's auto-redirect is disabled; the
+backend follows 3xx responses itself and re-validates each hop's host *and*
+method against the declaration before requesting it — a declared host that
+302s to an undeclared one (say, a cloud metadata address) is denied, not
+followed. A `303` (and `301`/`302` on a non-GET) downgrades to a body-less
+GET, which must also be in the declared `methods`. At most 10 redirects are
+followed; beyond that the call resolves to
+`{:error, {:too_many_redirects, url}}`.
 
 `req` is an **optional** dependency of bloccs — add it to *your* app to use this
 backend (mirrors how `DB.Ecto` expects you to bring Ecto):
@@ -123,6 +132,12 @@ are picked from `repo.__adapter__/0` (`$n` for Postgres, `?` otherwise) and
 identifiers are double-quoted, so **Postgres and SQLite3** are supported — for
 other dialects (e.g. MySQL back-ticks) or richer queries (`IN`, ranges, ordering),
 implement the `Bloccs.Effects.DB` behaviour directly.
+
+Values are always parameterized, and every **identifier** (the table, and the
+column names in insert attrs / read filters / update changes) is validated
+against `[A-Za-z_][A-Za-z0-9_]*` before any SQL is built — a name that doesn't
+match (e.g. one derived from a message payload) raises `Bloccs.Effects.Denied`
+instead of reaching the database.
 
 ### Update & delete
 

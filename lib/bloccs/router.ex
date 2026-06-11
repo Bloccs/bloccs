@@ -10,8 +10,10 @@ defmodule Bloccs.Router do
   downstream targets.
 
   The edge table is registered per-network via `register/2` at supervisor
-  startup. `dispatch/4` looks up the table and pushes each payload into every
-  matching downstream producer via `Bloccs.Producer.push/2`. A push that fails
+  startup and stored in `:persistent_term` (read-heavy, written once per
+  network boot), so it survives a Router restart and dispatch never blocks on
+  this process. `dispatch/4` looks up the table and pushes each payload into
+  every matching downstream producer via `Bloccs.Producer.push/2`. A push that fails
   (`:no_producer`, or a `{:error, :timeout}`) emits a `[:bloccs, :dispatch,
   :error]` telemetry event and is collected into `dispatch/4`'s return value so
   the caller can act on undelivered emits rather than silently dropping them.
@@ -36,10 +38,25 @@ defmodule Bloccs.Router do
   @doc """
   Register an edge table for a network. `edges` is a list of
   `{{from_node, from_port}, [{to_node, to_port}]}` pairs.
+
+  Edge tables live in `:persistent_term` — written once per network boot,
+  read on every dispatch without touching this process — so a Router restart
+  cannot silently lose the routing of a running network. (Before this, routes
+  lived in Router state: a restart meant every dispatch found zero targets and
+  acked successfully into the void.)
   """
   @spec register(atom(), edges()) :: :ok
   def register(network_id, edges) when is_atom(network_id) and is_list(edges) do
     GenServer.call(__MODULE__, {:register, network_id, edges})
+  end
+
+  @doc """
+  Remove a network's edge table (call when tearing a network down for good).
+  """
+  @spec unregister(atom()) :: :ok
+  def unregister(network_id) when is_atom(network_id) do
+    _ = :persistent_term.erase(edges_key(network_id))
+    :ok
   end
 
   @doc """
@@ -68,8 +85,33 @@ defmodule Bloccs.Router do
   @spec dispatch(atom(), atom(), atom(), term(), Bloccs.Lineage.ctx()) ::
           :ok | {:error, [{endpoint(), :no_producer | {:error, :timeout}}]}
   def dispatch(network_id, from_node, from_port, payload, ctx) do
-    targets = lookup(network_id, from_node, from_port)
+    case :persistent_term.get(edges_key(network_id), :missing) do
+      :missing ->
+        # No edge table at all is a wiring/lifecycle bug (dispatch before
+        # register, or after unregister) — fail loudly; an empty target list
+        # for a known network is the normal terminal-node case.
+        :telemetry.execute(
+          [:bloccs, :dispatch, :error],
+          %{},
+          %{
+            network: network_id,
+            from_node: from_node,
+            from_port: from_port,
+            to_node: nil,
+            to_port: nil,
+            reason: :network_not_registered
+          }
+        )
 
+        {:error, [{{from_node, from_port}, :network_not_registered}]}
+
+      table ->
+        targets = Map.get(table, {from_node, from_port}, [])
+        do_dispatch(network_id, from_node, from_port, payload, ctx, targets)
+    end
+  end
+
+  defp do_dispatch(network_id, from_node, from_port, payload, ctx, targets) do
     # One emitted message, possibly delivered to several edges: mint its lineage
     # once and carry it to every downstream producer (shared msg_id == one emit).
     lineage = Bloccs.Lineage.stamp(ctx)
@@ -134,7 +176,10 @@ defmodule Bloccs.Router do
   @doc "Return targets for a given source port; used by tests."
   @spec lookup(atom(), atom(), atom()) :: [endpoint()]
   def lookup(network_id, from_node, from_port) do
-    GenServer.call(__MODULE__, {:lookup, network_id, from_node, from_port})
+    case :persistent_term.get(edges_key(network_id), :missing) do
+      :missing -> []
+      table -> Map.get(table, {from_node, from_port}, [])
+    end
   end
 
   @doc "Register a sink listener (a pid) for a particular exposed port."
@@ -169,12 +214,16 @@ defmodule Bloccs.Router do
   @impl true
   def handle_call({:register, network_id, edges}, _from, state) do
     table = build_table(edges)
-    {:reply, :ok, Map.put(state, {:edges, network_id}, table)}
-  end
 
-  def handle_call({:lookup, network_id, from_node, from_port}, _from, state) do
-    table = Map.get(state, {:edges, network_id}, %{})
-    {:reply, Map.get(table, {from_node, from_port}, []), state}
+    # Writes still serialize through this process (registration order stays
+    # deterministic), but the table itself lives in persistent_term: re-putting
+    # an identical table on a supervisor restart is a no-op, and Router state
+    # holds only sink registrations afterwards.
+    if :persistent_term.get(edges_key(network_id), :missing) != table do
+      :persistent_term.put(edges_key(network_id), table)
+    end
+
+    {:reply, :ok, state}
   end
 
   def handle_call({:register_sink, network_id, node, port, pid}, _from, state) do
@@ -207,4 +256,6 @@ defmodule Bloccs.Router do
       Map.update(acc, from, tos, &(&1 ++ tos))
     end)
   end
+
+  defp edges_key(network_id), do: {__MODULE__, :edges, network_id}
 end

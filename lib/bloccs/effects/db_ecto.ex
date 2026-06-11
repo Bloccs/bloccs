@@ -36,10 +36,11 @@ defmodule Bloccs.Effects.DB.Ecto do
   (MySQL) are not in this version — implement the `Bloccs.Effects.DB` behaviour
   directly for those.
 
-  > Table and filter-column names are interpolated into SQL (values are always
-  > parameterized). They come from node source — trusted code, like the table
-  > name in `insert/3` — not from message payloads. Don't derive them from
-  > untrusted input.
+  > Table and column names are interpolated into SQL (values are always
+  > parameterized), so every identifier is validated against
+  > `[A-Za-z_][A-Za-z0-9_]*` before any SQL is built — a name that doesn't
+  > match (e.g. one derived from a message payload) raises
+  > `Bloccs.Effects.Denied` instead of reaching the database.
 
   ## Returning generated columns
 
@@ -71,9 +72,30 @@ defmodule Bloccs.Effects.DB.Ecto do
     %__MODULE__{allow: allow, repo: cfg[:repo], returning: cfg[:returning]}
   end
 
+  # Identifiers (table and column names) are interpolated into SQL — values
+  # are always parameterized, but an identifier derived from a message payload
+  # would be an injection vector. Anything that isn't a bare SQL identifier is
+  # denied before any SQL is built. Must run OUTSIDE the do_* helpers: their
+  # rescue clauses would swallow the Denied into an {:error, _} tuple.
+  @identifier ~r/^[A-Za-z_][A-Za-z0-9_]*$/
+
+  defp check_identifiers!(names) do
+    Enum.each(names, fn name ->
+      unless Regex.match?(@identifier, to_string(name)) do
+        Effects.deny!(
+          :db,
+          "invalid SQL identifier #{inspect(to_string(name))} — table/column " <>
+            "names must match [A-Za-z_][A-Za-z0-9_]* (never derive them from " <>
+            "message payloads)"
+        )
+      end
+    end)
+  end
+
   @impl true
   def insert(%__MODULE__{allow: allow, repo: repo, returning: returning}, table, attrs) do
     scope = "#{table}:insert"
+    attrs = Map.new(attrs)
 
     cond do
       scope not in allow ->
@@ -87,7 +109,8 @@ defmodule Bloccs.Effects.DB.Ecto do
         )
 
       true ->
-        do_insert(repo, table, Map.new(attrs), returning)
+        check_identifiers!([table | Map.keys(attrs)])
+        do_insert(repo, table, attrs, returning)
     end
   end
 
@@ -133,6 +156,7 @@ defmodule Bloccs.Effects.DB.Ecto do
         )
 
       true ->
+        check_identifiers!([table | Enum.map(filter, fn {col, _} -> col end)])
         do_read(repo, table, filter, mode)
     end
   end
@@ -165,18 +189,30 @@ defmodule Bloccs.Effects.DB.Ecto do
   @impl true
   def update(%__MODULE__{allow: allow, repo: repo}, table, id, changes) do
     cond do
-      "#{table}:update" not in allow -> deny(:update, table, allow)
-      is_nil(repo) -> deny_no_repo()
-      true -> do_update(repo, table, id, changes)
+      "#{table}:update" not in allow ->
+        deny(:update, table, allow)
+
+      is_nil(repo) ->
+        deny_no_repo()
+
+      true ->
+        check_identifiers!([table | Enum.map(changes, fn {col, _} -> col end)])
+        do_update(repo, table, id, changes)
     end
   end
 
   @impl true
   def delete(%__MODULE__{allow: allow, repo: repo}, table, id) do
     cond do
-      "#{table}:delete" not in allow -> deny(:delete, table, allow)
-      is_nil(repo) -> deny_no_repo()
-      true -> do_delete(repo, table, id)
+      "#{table}:delete" not in allow ->
+        deny(:delete, table, allow)
+
+      is_nil(repo) ->
+        deny_no_repo()
+
+      true ->
+        check_identifiers!([table])
+        do_delete(repo, table, id)
     end
   end
 

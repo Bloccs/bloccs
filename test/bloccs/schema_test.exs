@@ -121,6 +121,34 @@ defmodule Bloccs.SchemaTest do
     end
   end
 
+  describe "list-typed fields" do
+    setup do
+      Schema.register("Batch@1", ids: {:list, :integer})
+      :ok
+    end
+
+    test "validates element types and reports the offending index" do
+      assert :ok = Schema.validate("Batch@1", %{ids: [1, 2, 3]})
+
+      assert {:error, errs} = Schema.validate("Batch@1", %{ids: [1, "two", 3]})
+      assert Enum.any?(errs, &(&1 =~ "ids[1]"))
+    end
+
+    test "does not create atoms per element (payload-driven atom exhaustion)" do
+      payload = %{ids: Enum.to_list(1..10_000)}
+      bad = %{ids: Enum.map(1..1_000, &to_string/1)}
+
+      before_count = :erlang.system_info(:atom_count)
+      assert :ok = Schema.validate("Batch@1", payload)
+      assert {:error, _} = Schema.validate("Batch@1", bad)
+      after_count = :erlang.system_info(:atom_count)
+
+      # Allow a small delta for unrelated VM activity, but nothing
+      # proportional to the payload size.
+      assert after_count - before_count < 50
+    end
+  end
+
   describe "list schemas" do
     test "lists every registered id" do
       Schema.register("A@1", x: :string)

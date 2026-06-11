@@ -189,7 +189,10 @@ defmodule Bloccs.Schema do
     v
     |> Enum.with_index()
     |> Enum.flat_map(fn {item, idx} ->
-      case check_type(:"#{name}[#{idx}]", inner, item) do
+      # The element name is only ever interpolated into error messages, so it
+      # stays a binary — atoms are never GC'd, and payload-sized lists would
+      # otherwise grow the atom table without bound.
+      case check_type("#{name}[#{idx}]", inner, item) do
         [] -> []
         errs -> errs
       end

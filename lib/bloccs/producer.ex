@@ -62,18 +62,53 @@ defmodule Bloccs.Producer do
 
   @doc """
   Re-enqueue a payload after `delay_ms` (used by the runtime to schedule a retry
-  with backoff; the timer lives in the supervised producer process). If the
-  buffer is full when the timer fires, the enqueue is retried shortly rather
-  than dropped. Returns `:ok` or `:no_producer`.
+  with backoff). The timer lives outside the producer and the canonical name is
+  re-resolved when it fires, so a producer restart between scheduling and firing
+  doesn't silently swallow the retry — if the name is still gone at fire time,
+  a `[:bloccs, :producer, :enqueue_lost]` event is emitted and any idempotency
+  reservation carried in `meta[:bloccs_dedup]` is released. If the buffer is
+  full when the timer fires, the enqueue is retried shortly rather than dropped.
+  Returns `:ok` or `:no_producer` (name not registered right now).
   """
   @spec push_after(atom(), term(), map(), non_neg_integer()) :: :ok | :no_producer
   def push_after(name, payload, meta, delay_ms) do
     case Registry.lookup(@registry, name) do
-      [{pid, _}] ->
-        Process.send_after(pid, {:enqueue, payload, meta}, delay_ms)
+      [{_pid, _}] ->
+        {:ok, _tref} =
+          :timer.apply_after(delay_ms, __MODULE__, :push_scheduled, [name, payload, meta])
+
         :ok
 
       [] ->
+        :no_producer
+    end
+  end
+
+  @doc false
+  # Timer target for push_after/4: deliver the delayed enqueue, re-resolving
+  # the producer by name so the message follows a restarted producer process.
+  def push_scheduled(name, payload, meta) do
+    case Registry.lookup(@registry, name) do
+      [{pid, _}] ->
+        send(pid, {:enqueue, payload, meta})
+        :ok
+
+      [] ->
+        # The producer disappeared between scheduling and firing (teardown or
+        # a restart that lost the registration). The work is lost — that's the
+        # documented non-durability — but it must never be lost silently, and
+        # it must not leave the idempotency key wedged until the TTL sweep.
+        case Map.get(meta, :bloccs_dedup) do
+          {scope, key} -> Bloccs.Idempotency.release(scope, key)
+          _ -> :ok
+        end
+
+        :telemetry.execute(
+          [:bloccs, :producer, :enqueue_lost],
+          %{},
+          %{name: name, attempt: Map.get(meta, :bloccs_attempt)}
+        )
+
         :no_producer
     end
   end

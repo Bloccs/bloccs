@@ -267,33 +267,82 @@ defmodule Bloccs.Parser do
 
   defp cast_port(_name, _), do: {:error, "expected a table with a schema key"}
 
-  defp cast_effects(map) when is_map(map) do
-    effects = %Effects{
-      http: cast_http(Map.get(map, "http")),
-      db: cast_db(Map.get(map, "db")),
-      time: Map.get(map, "time"),
-      random: Map.get(map, "random")
-    }
+  @known_effect_axes ~w(http db time random)
 
-    {:ok, effects}
+  # Every malformed declaration is an error, never a silent nil — [effects] is
+  # a security posture, and a typo'd axis or a misshapen allowlist must not be
+  # indistinguishable from "nothing declared".
+  defp cast_effects(map) when is_map(map) do
+    unknown_errors =
+      for key <- Map.keys(map), key not in @known_effect_axes do
+        %Error{
+          message:
+            "unknown effect axis #{inspect(key)} " <>
+              "(known: #{Enum.join(@known_effect_axes, ", ")})"
+        }
+      end
+
+    {http, http_errors} = cast_http(Map.get(map, "http"))
+    {db, db_errors} = cast_db(Map.get(map, "db"))
+    {time, time_errors} = cast_scalar_axis(Map.get(map, "time"), "time")
+    {random, random_errors} = cast_scalar_axis(Map.get(map, "random"), "random")
+
+    case unknown_errors ++ http_errors ++ db_errors ++ time_errors ++ random_errors do
+      [] -> {:ok, %Effects{http: http, db: db, time: time, random: random}}
+      errors -> {:error, errors}
+    end
   end
 
   defp cast_effects(_), do: {:error, [%Error{message: "expected a table"}]}
 
-  defp cast_http(nil), do: nil
+  defp cast_http(nil), do: {nil, []}
 
   defp cast_http(%{"allow" => allow, "methods" => methods})
-       when is_list(allow) and is_list(methods),
-       do: %{allow: allow, methods: Enum.map(methods, &String.upcase/1)}
+       when is_list(allow) and is_list(methods) do
+    cond do
+      not Enum.all?(allow, &is_binary/1) ->
+        {nil, [%Error{message: "http allow must be a list of host strings"}]}
 
-  defp cast_http(%{"allow" => allow}) when is_list(allow),
-    do: %{allow: allow, methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]}
+      not Enum.all?(methods, &is_binary/1) ->
+        {nil, [%Error{message: "http methods must be a list of strings (e.g. [\"GET\"])"}]}
 
-  defp cast_http(_), do: nil
+      true ->
+        {%{allow: allow, methods: Enum.map(methods, &String.upcase/1)}, []}
+    end
+  end
 
-  defp cast_db(nil), do: nil
-  defp cast_db(%{"allow" => allow}) when is_list(allow), do: %{allow: allow}
-  defp cast_db(_), do: nil
+  defp cast_http(%{"allow" => allow} = map)
+       when is_list(allow) and not is_map_key(map, "methods") do
+    if Enum.all?(allow, &is_binary/1) do
+      {%{allow: allow, methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]}, []}
+    else
+      {nil, [%Error{message: "http allow must be a list of host strings"}]}
+    end
+  end
+
+  defp cast_http(other),
+    do: {nil, [%Error{message: "http must be { allow = [\"host\", …] }, got #{inspect(other)}"}]}
+
+  defp cast_db(nil), do: {nil, []}
+
+  defp cast_db(%{"allow" => allow}) when is_list(allow) do
+    if Enum.all?(allow, &is_binary/1) do
+      {%{allow: allow}, []}
+    else
+      {nil, [%Error{message: "db allow must be a list of \"table:action\" strings"}]}
+    end
+  end
+
+  defp cast_db(other),
+    do:
+      {nil,
+       [%Error{message: "db must be { allow = [\"table:action\", …] }, got #{inspect(other)}"}]}
+
+  defp cast_scalar_axis(nil, _axis), do: {nil, []}
+  defp cast_scalar_axis(v, _axis) when is_binary(v), do: {v, []}
+
+  defp cast_scalar_axis(v, axis),
+    do: {nil, [%Error{message: "#{axis} must be a string, got #{inspect(v)}"}]}
 
   defp cast_contract(map) when is_map(map) do
     with {:ok, pure} <- cast_mfa(Map.get(map, "pure_core"), 2),
@@ -318,13 +367,18 @@ defmodule Bloccs.Parser do
   defp cast_batch(_), do: {:error, [%Error{message: "expected a table"}]}
 
   defp cast_join(%{"on" => on} = map) when is_binary(on) do
-    deadletter =
-      case Map.get(map, "deadletter") do
-        nil -> nil
-        port when is_binary(port) -> String.to_atom(port)
-      end
+    case Map.get(map, "deadletter") do
+      nil ->
+        {:ok, %Join{on: on, timeout_ms: Map.get(map, "timeout_ms"), deadletter: nil}}
 
-    {:ok, %Join{on: on, timeout_ms: Map.get(map, "timeout_ms"), deadletter: deadletter}}
+      port when is_binary(port) ->
+        {:ok,
+         %Join{on: on, timeout_ms: Map.get(map, "timeout_ms"), deadletter: String.to_atom(port)}}
+
+      other ->
+        {:error,
+         [%Error{message: "deadletter must be a port name string, got #{inspect(other)}"}]}
+    end
   end
 
   defp cast_join(map) when is_map(map),
@@ -427,14 +481,15 @@ defmodule Bloccs.Parser do
     {expose, expose_errors} = cast_expose(expose_raw, path)
     {expose, expose_rewrite_errors} = rewrite_subgraph_expose(expose, subgraph_index, path)
     {sup, sup_errors} = cast_supervision(sup_raw, path)
-    deploy = cast_deploy(deploy_raw)
+    {deploy, deploy_errors} = cast_deploy(deploy_raw, path)
 
     meta_errors = check_network_meta(meta, path)
 
     errors =
       meta_errors ++
         node_errors ++
-        edge_errors ++ rewrite_errors ++ expose_errors ++ expose_rewrite_errors ++ sup_errors
+        edge_errors ++
+        rewrite_errors ++ expose_errors ++ expose_rewrite_errors ++ sup_errors ++ deploy_errors
 
     if errors == [] do
       {:ok,
@@ -492,7 +547,8 @@ defmodule Bloccs.Parser do
          base_dir,
          network_path,
          visited
-       ) do
+       )
+       when is_binary(use_path) do
     resolved =
       if Path.type(use_path) == :absolute,
         do: use_path,
@@ -799,32 +855,40 @@ defmodule Bloccs.Parser do
 
   defp cast_to(_), do: {:error, "to must be string or list of strings"}
 
-  defp cast_expose(map, _) when is_map(map) do
-    in_map =
-      map
-      |> Map.get("in", %{})
-      |> cast_expose_section()
+  defp cast_expose(map, network_path) when is_map(map) do
+    {in_map, in_errs} = cast_expose_section(Map.get(map, "in", %{}), "in", network_path)
+    {out_map, out_errs} = cast_expose_section(Map.get(map, "out", %{}), "out", network_path)
 
-    out_map =
-      map
-      |> Map.get("out", %{})
-      |> cast_expose_section()
-
-    {%Expose{in: in_map, out: out_map}, []}
+    {%Expose{in: in_map, out: out_map}, in_errs ++ out_errs}
   end
 
-  defp cast_expose(_, _), do: {%Expose{}, []}
+  defp cast_expose(other, network_path),
+    do: {%Expose{}, [err(network_path, "[expose]", "expected a table, got #{inspect(other)}")]}
 
-  defp cast_expose_section(map) when is_map(map) do
-    Enum.into(map, %{}, fn {name, endpoint} ->
-      {String.to_atom(name), endpoint_pair(endpoint)}
+  defp cast_expose_section(map, sub, network_path) when is_map(map) do
+    Enum.reduce(map, {%{}, []}, fn {name, endpoint}, {acc, errs} ->
+      case endpoint_pair(endpoint) do
+        {:ok, pair} ->
+          {Map.put(acc, String.to_atom(name), pair), errs}
+
+        {:error, msg} ->
+          {acc, [err(network_path, "[expose.#{sub}]", "#{name}: #{msg}") | errs]}
+      end
     end)
   end
 
+  defp cast_expose_section(other, sub, network_path),
+    do: {%{}, [err(network_path, "[expose.#{sub}]", "expected a table, got #{inspect(other)}")]}
+
   defp endpoint_pair(s) when is_binary(s) do
-    [n, p] = String.split(s, ".", parts: 2)
-    {String.to_atom(n), String.to_atom(p)}
+    case String.split(s, ".", parts: 2) do
+      [n, p] when n != "" and p != "" -> {:ok, {String.to_atom(n), String.to_atom(p)}}
+      _ -> {:error, "endpoint must be \"node.port\", got #{inspect(s)}"}
+    end
   end
+
+  defp endpoint_pair(other),
+    do: {:error, "endpoint must be a \"node.port\" string, got #{inspect(other)}"}
 
   defp cast_supervision(map, network_path) when is_map(map) do
     case cast_strategy_field(Map.get(map, "strategy")) do
@@ -854,14 +918,26 @@ defmodule Bloccs.Parser do
   defp cast_strategy_field(nil), do: {:ok, :one_for_one}
   defp cast_strategy_field(s), do: Supervision.cast_strategy(s)
 
-  defp cast_deploy(map) when is_map(map) do
-    concurrency =
-      map
-      |> Map.get("concurrency", %{})
-      |> Enum.into(%{}, fn {k, v} -> {String.to_atom(k), v} end)
+  defp cast_deploy(map, network_path) when is_map(map) do
+    case Map.get(map, "concurrency", %{}) do
+      conc when is_map(conc) ->
+        concurrency = Enum.into(conc, %{}, fn {k, v} -> {String.to_atom(k), v} end)
+        {%{concurrency: concurrency, placement: Map.get(map, "placement")}, []}
 
-    %{concurrency: concurrency, placement: Map.get(map, "placement")}
+      other ->
+        {%{concurrency: %{}, placement: Map.get(map, "placement")},
+         [
+           err(
+             network_path,
+             "[deploy]",
+             "concurrency must be a table of node = count, got #{inspect(other)}"
+           )
+         ]}
+    end
   end
 
-  defp cast_deploy(_), do: %{concurrency: %{}, placement: nil}
+  defp cast_deploy(other, network_path),
+    do:
+      {%{concurrency: %{}, placement: nil},
+       [err(network_path, "[deploy]", "expected a table, got #{inspect(other)}")]}
 end

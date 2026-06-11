@@ -309,6 +309,193 @@ defmodule Bloccs.ParserTest do
     """)
   end
 
+  describe "malformed manifests return structured errors (never raise)" do
+    # Append a malformed section to an otherwise-valid node and assert the
+    # parser reports it as a structured error instead of crashing.
+    defp parse_node_with(extra) do
+      Parser.parse_node_string(node_with_ports("m", "a", "b") <> "\n" <> extra)
+    end
+
+    defp messages({:error, errors}), do: Enum.map(errors, & &1.message)
+
+    test "non-string join deadletter" do
+      result = parse_node_with("[join]\non = \"id\"\ndeadletter = 5\n")
+      assert Enum.any?(messages(result), &(&1 =~ "deadletter must be a port name string"))
+    end
+
+    test "non-string entries in http methods" do
+      result =
+        Parser.parse_node_string("""
+        [node]
+        id = "m"
+        version = "0.1.0"
+        kind = "transform"
+
+        [ports.in]
+        a = { schema = "Anything@1" }
+
+        [ports.out]
+        b = { schema = "Anything@1" }
+
+        [effects]
+        http = { allow = ["x.local"], methods = [1] }
+
+        [contract]
+        pure_core = "Bloccs.Stub.transform/2"
+        effect_shell = "Bloccs.Stub.execute/2"
+        """)
+
+      assert Enum.any?(messages(result), &(&1 =~ "methods must be a list of strings"))
+    end
+
+    test "unknown effect axis is an error, not silently dropped" do
+      result =
+        Parser.parse_node_string("""
+        [node]
+        id = "m"
+        version = "0.1.0"
+        kind = "transform"
+
+        [ports.in]
+        a = { schema = "Anything@1" }
+
+        [ports.out]
+        b = { schema = "Anything@1" }
+
+        [effects]
+        htttp = { allow = ["x.local"] }
+
+        [contract]
+        pure_core = "Bloccs.Stub.transform/2"
+        effect_shell = "Bloccs.Stub.execute/2"
+        """)
+
+      assert Enum.any?(messages(result), &(&1 =~ ~s(unknown effect axis "htttp")))
+    end
+
+    test "non-list http allow is an error, not a silent nil" do
+      result =
+        Parser.parse_node_string("""
+        [node]
+        id = "m"
+        version = "0.1.0"
+        kind = "transform"
+
+        [ports.in]
+        a = { schema = "Anything@1" }
+
+        [ports.out]
+        b = { schema = "Anything@1" }
+
+        [effects]
+        http = { allow = "x.local" }
+
+        [contract]
+        pure_core = "Bloccs.Stub.transform/2"
+        effect_shell = "Bloccs.Stub.execute/2"
+        """)
+
+      assert Enum.any?(messages(result), &(&1 =~ "http must be"))
+    end
+
+    test "non-string time/random axes" do
+      result = parse_node_with("")
+
+      assert {:ok, _} = result
+
+      result2 =
+        Parser.parse_node_string(
+          String.replace(node_with_ports("m", "a", "b"), "[effects]", "[effects]\ntime = 5")
+        )
+
+      assert Enum.any?(messages(result2), &(&1 =~ "time must be a string"))
+    end
+
+    @tag :tmp_dir
+    test "expose endpoints without a dot or with a non-string value", %{tmp_dir: tmp} do
+      File.write!(Path.join(tmp, "n.bloccs"), node_with_ports("n", "a", "b"))
+
+      path = Path.join(tmp, "net.bloccs")
+
+      File.write!(path, """
+      [network]
+      id = "net"
+      version = "0.1.0"
+
+      [nodes]
+      n = { use = "n.bloccs" }
+
+      [expose.in]
+      nodot = "justaname"
+      notastring = 5
+      """)
+
+      assert {:error, errors} = Parser.parse_network(path)
+      msgs = Enum.map(errors, & &1.message)
+      assert Enum.any?(msgs, &(&1 =~ ~s(endpoint must be "node.port")))
+      assert Enum.any?(msgs, &(&1 =~ "got 5"))
+    end
+
+    @tag :tmp_dir
+    test "non-map expose section", %{tmp_dir: tmp} do
+      File.write!(Path.join(tmp, "n.bloccs"), node_with_ports("n", "a", "b"))
+      path = Path.join(tmp, "net.bloccs")
+
+      File.write!(path, """
+      [network]
+      id = "net"
+      version = "0.1.0"
+
+      [nodes]
+      n = { use = "n.bloccs" }
+
+      [expose]
+      in = "x"
+      """)
+
+      assert {:error, errors} = Parser.parse_network(path)
+      assert Enum.any?(errors, &(&1.message =~ "expected a table"))
+    end
+
+    @tag :tmp_dir
+    test "non-string use path", %{tmp_dir: tmp} do
+      path = Path.join(tmp, "net.bloccs")
+
+      File.write!(path, """
+      [network]
+      id = "net"
+      version = "0.1.0"
+
+      [nodes]
+      n = { use = 5 }
+      """)
+
+      assert {:error, errors} = Parser.parse_network(path)
+      assert Enum.any?(errors, &(&1.message =~ "expected { use ="))
+    end
+
+    @tag :tmp_dir
+    test "non-table deploy concurrency", %{tmp_dir: tmp} do
+      File.write!(Path.join(tmp, "n.bloccs"), node_with_ports("n", "a", "b"))
+      path = Path.join(tmp, "net.bloccs")
+
+      File.write!(path, """
+      [network]
+      id = "net"
+      version = "0.1.0"
+
+      [nodes]
+      n = { use = "n.bloccs" }
+
+      [deploy]
+      concurrency = "lots"
+      """)
+
+      assert {:error, errors} = Parser.parse_network(path)
+      assert Enum.any?(errors, &(&1.message =~ "concurrency must be a table"))
+    end
+  end
+
   defp node_with_ports(id, in_port, out_port) do
     """
     [node]
