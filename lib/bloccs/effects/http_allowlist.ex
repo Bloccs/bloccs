@@ -30,8 +30,13 @@ defmodule Bloccs.Effects.HTTP.Allowlist do
 
   defp host_allowed?(allow, url) do
     case URI.parse(url) do
-      %URI{host: host} when is_binary(host) -> host in allow
-      _ -> false
+      # DNS names are case-insensitive, so compare folded — otherwise
+      # API.example.com would be denied despite being the declared host.
+      %URI{host: host} when is_binary(host) ->
+        String.downcase(host) in Enum.map(allow, &String.downcase/1)
+
+      _ ->
+        false
     end
   end
 end
