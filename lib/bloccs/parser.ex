@@ -311,7 +311,8 @@ defmodule Bloccs.Parser do
     end
   end
 
-  defp cast_http(%{"allow" => allow} = map) when is_list(allow) and not is_map_key(map, "methods") do
+  defp cast_http(%{"allow" => allow} = map)
+       when is_list(allow) and not is_map_key(map, "methods") do
     if Enum.all?(allow, &is_binary/1) do
       {%{allow: allow, methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]}, []}
     else
@@ -375,7 +376,8 @@ defmodule Bloccs.Parser do
          %Join{on: on, timeout_ms: Map.get(map, "timeout_ms"), deadletter: String.to_atom(port)}}
 
       other ->
-        {:error, [%Error{message: "deadletter must be a port name string, got #{inspect(other)}"}]}
+        {:error,
+         [%Error{message: "deadletter must be a port name string, got #{inspect(other)}"}]}
     end
   end
 

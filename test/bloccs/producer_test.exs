@@ -47,6 +47,50 @@ defmodule Bloccs.ProducerTest do
     assert :no_producer = Producer.push_after(:totally_not_registered_xyz, %{}, %{}, 0)
   end
 
+  test "push_after survives a producer restart (re-resolves the name at fire time)" do
+    name = :"prod_restart_#{:erlang.unique_integer([:positive, :monotonic])}"
+
+    {:ok, old} = Producer.start_link(name: name)
+    assert :ok = Producer.push_after(name, %{n: :retry}, %{}, 100)
+
+    # The old producer dies before the timer fires; a replacement registers
+    # under the same canonical name (what a supervisor restart does).
+    GenStage.stop(old)
+    {:ok, replacement} = Producer.start_link(name: name)
+    on_exit(fn -> if Process.alive?(replacement), do: GenStage.stop(replacement) end)
+    {:ok, _consumer} = Sink.start_link(replacement, self())
+
+    assert_receive {:got, %{n: :retry}}, 1_000
+  end
+
+  test "a lost scheduled enqueue emits telemetry and releases its idempotency reservation" do
+    name = :"prod_lost_#{:erlang.unique_integer([:positive, :monotonic])}"
+    handler_id = "test-enqueue-lost-#{name}"
+    parent = self()
+
+    :telemetry.attach(
+      handler_id,
+      [:bloccs, :producer, :enqueue_lost],
+      fn _event, _meas, meta, _cfg -> send(parent, {:enqueue_lost, meta}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    scope = {:lost_test_net, :lost_test_node}
+    assert Bloccs.Idempotency.reserve(scope, "key-1")
+
+    {:ok, pid} = Producer.start_link(name: name)
+    assert :ok = Producer.push_after(name, %{}, %{bloccs_dedup: {scope, "key-1"}}, 100)
+
+    # Producer gone for good before the timer fires — no replacement this time.
+    GenStage.stop(pid)
+
+    assert_receive {:enqueue_lost, %{name: ^name}}, 1_000
+    # The reservation was released, so the key is claimable again.
+    assert Bloccs.Idempotency.reserve(scope, "key-1")
+  end
+
   test "carries push meta through to the Broadway.Message metadata" do
     name = :"prod_meta_#{:erlang.unique_integer([:positive, :monotonic])}"
     {:ok, pid} = Producer.start_link(name: name)

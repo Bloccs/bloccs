@@ -70,7 +70,10 @@ defmodule Bloccs.InspectTest do
         nil
       )
 
-      # An unregistered network has no edges, but dispatch still emits the event.
+      # A registered network with no edges: dispatch reaches nothing but
+      # still emits the event.
+      :ok = Bloccs.Router.register(:inspect_test_net, [])
+      on_exit(fn -> Bloccs.Router.unregister(:inspect_test_net) end)
       Bloccs.Router.dispatch(:inspect_test_net, :a, :out, %{password: "hunter2", id: 7})
 
       assert_receive {:emit, meta}
@@ -93,6 +96,8 @@ defmodule Bloccs.InspectTest do
         nil
       )
 
+      :ok = Bloccs.Router.register(:inspect_test_net, [])
+      on_exit(fn -> Bloccs.Router.unregister(:inspect_test_net) end)
       Bloccs.Router.dispatch(:inspect_test_net, :a, :out, %{id: 1})
 
       assert_receive {:emit, meta}

@@ -155,7 +155,9 @@ defmodule Bloccs.Collector do
   # ArgumentError — inside handle_call that would kill the collector and with
   # it every in-flight request across all networks. No deadline, no timer.
   defp schedule_expire(_key, :infinity), do: nil
-  defp schedule_expire(key, timeout_ms), do: Process.send_after(self(), {:expire, key}, timeout_ms)
+
+  defp schedule_expire(key, timeout_ms),
+    do: Process.send_after(self(), {:expire, key}, timeout_ms)
 
   def handle_call(:stats, _from, %{requests: reqs} = state) do
     by_network = reqs |> Map.keys() |> Enum.frequencies_by(fn {nid, _tid} -> nid end)
