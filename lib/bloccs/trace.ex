@@ -105,12 +105,27 @@ defmodule Bloccs.Trace do
     end
   end
 
-  @doc "Load a `.bloccs-trace` file back into an event list."
+  @doc """
+  Load a `.bloccs-trace` file back into an event list.
+
+  Node/port names are decoded with `String.to_existing_atom/1` — a trace is an
+  input file, and minting new atoms from one would let a corrupt (or hostile)
+  trace grow the atom table without bound. Names that don't correspond to any
+  known atom can't match a coverage obligation anyway, so events carrying them
+  are dropped. (Load the trace after parsing the network manifest, which is
+  what mints the legitimate names — `mix bloccs.coverage` already does.)
+  """
   @spec load(Path.t()) :: {:ok, [event()]} | {:error, term()}
   def load(path) do
     with {:ok, text} <- File.read(path),
-         {:ok, %{"events" => raw}} <- Jason.decode(text) do
-      {:ok, Enum.map(raw, &decode_event/1)}
+         {:ok, doc} <- Jason.decode(text) do
+      case doc do
+        %{"events" => raw} when is_list(raw) ->
+          {:ok, raw |> Enum.map(&decode_event/1) |> Enum.reject(&is_nil/1)}
+
+        _ ->
+          {:error, :malformed_trace}
+      end
     end
   end
 
@@ -129,15 +144,38 @@ defmodule Bloccs.Trace do
   end
 
   defp decode_event(%{"kind" => "port_in", "node" => n, "port" => p}) do
-    {:port_in, String.to_atom(n), String.to_atom(p)}
+    case endpoint(n, p) do
+      {node, port} -> {:port_in, node, port}
+      nil -> nil
+    end
   end
 
-  defp decode_event(%{"kind" => "emit", "node" => n, "port" => p, "targets" => ts}) do
-    targets =
-      Enum.map(ts, fn %{"node" => tn, "port" => tp} ->
-        {String.to_atom(tn), String.to_atom(tp)}
-      end)
+  defp decode_event(%{"kind" => "emit", "node" => n, "port" => p, "targets" => ts})
+       when is_list(ts) do
+    case endpoint(n, p) do
+      {node, port} ->
+        targets =
+          ts
+          |> Enum.map(fn
+            %{"node" => tn, "port" => tp} -> endpoint(tn, tp)
+            _ -> nil
+          end)
+          |> Enum.reject(&is_nil/1)
 
-    {:emit, String.to_atom(n), String.to_atom(p), targets}
+        {:emit, node, port, targets}
+
+      nil ->
+        nil
+    end
   end
+
+  defp decode_event(_), do: nil
+
+  defp endpoint(n, p) when is_binary(n) and is_binary(p) do
+    {String.to_existing_atom(n), String.to_existing_atom(p)}
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp endpoint(_, _), do: nil
 end
