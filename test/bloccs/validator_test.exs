@@ -318,5 +318,60 @@ defmodule Bloccs.ValidatorTest do
       assert {:error, issues} = Validator.validate_network(network)
       assert Enum.any?(issues, &(&1.message =~ "cycle"))
     end
+
+    @tag :tmp_dir
+    test "diamond-chain DAGs validate without exponential blowup", %{tmp_dir: tmp} do
+      # 40 stacked diamonds (121 nodes). Without cross-path memoization the
+      # DFS enumerates 2^40 paths and this test never finishes.
+      layers = 40
+
+      node_ids = ["n0"] ++ Enum.flat_map(1..layers, fn i -> ["l#{i}", "r#{i}", "n#{i}"] end)
+
+      for id <- node_ids do
+        File.write!(
+          Path.join(tmp, "#{id}.bloccs"),
+          tmp_node_with(id, "input", "X@1", "output", "X@1")
+        )
+      end
+
+      nodes_section = Enum.map_join(node_ids, "\n", &"#{&1} = { use = \"#{&1}.bloccs\" }")
+
+      edges_section =
+        1..layers
+        |> Enum.flat_map(fn i ->
+          prev = "n#{i - 1}"
+
+          [
+            {"#{prev}.output", "l#{i}.input"},
+            {"#{prev}.output", "r#{i}.input"},
+            {"l#{i}.output", "n#{i}.input"},
+            {"r#{i}.output", "n#{i}.input"}
+          ]
+        end)
+        |> Enum.map_join("\n", fn {f, t} ->
+          "[[edges]]\nfrom = \"#{f}\"\nto = \"#{t}\"\n"
+        end)
+
+      net_path = Path.join(tmp, "net.bloccs")
+
+      File.write!(net_path, """
+      [network]
+      id = "diamonds"
+      version = "0.1.0"
+
+      [nodes]
+      #{nodes_section}
+
+      #{edges_section}
+      """)
+
+      assert {:ok, network} = Parser.parse_network(net_path)
+
+      {micros, result} = :timer.tc(fn -> Validator.validate_network(network) end)
+      assert :ok = result
+      # Linear-time validation of ~120 nodes is sub-millisecond; 2s leaves
+      # enormous headroom for slow CI while still catching a blowup.
+      assert micros < 2_000_000
+    end
   end
 end
