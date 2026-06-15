@@ -145,17 +145,15 @@ defmodule Bloccs.Node do
 
   defp walk_effect_shell_for_undeclared(_env, _shell, _manifest), do: :ok
 
-  # Uses ExAST.Patcher.find_all to detect direct `ctx.effects.<axis>` access in
-  # the effect-shell function body. For each known axis that ISN'T declared in
-  # the manifest's `[effects]`, search every clause body; emit IO.warn if a hit
-  # is found.
+  # Walks the effect-shell clause bodies for `<var>.effects.<axis>` access
+  # (any variable name, not just `ctx`). For each known axis that ISN'T
+  # declared in the manifest's `[effects]`, emit IO.warn on a hit.
   #
   # Limitations (v0.1, by design):
   #   - Syntactic only — aliasing (`effects = ctx.effects`) is not tracked.
   #     Reach integration (v0.2+) closes this gap with transitive call-graph
   #     analysis. The runtime capability struct backstops the warning either
   #     way: undeclared calls raise `Bloccs.Effects.Denied`.
-  #   - Assumes the context parameter is named `ctx`. Bloccs convention.
   defp check_node_for_undeclared_effects(bodies, declared, env) when is_list(bodies) do
     declared_set = MapSet.new(declared)
     candidates = Enum.reject(@known_effect_axes, &MapSet.member?(declared_set, &1))
@@ -171,19 +169,25 @@ defmodule Bloccs.Node do
     end)
   end
 
-  # The syntactic effect-leak check relies on ExAST, which is a dev/test-only
-  # dependency of bloccs — it is NOT present when bloccs is used as a dependency
-  # by a downstream app. In that case we skip the compile-time warning entirely;
-  # the runtime capability struct still refuses undeclared calls
-  # (`Bloccs.Effects.Denied`), which is the actual guarantee. Dynamic dispatch
-  # (`apply/3`) keeps the compiler from warning about the optional module.
+  # A plain Macro.prewalk over the clause AST — no external dependency, so
+  # the check runs identically when bloccs is a dependency of a downstream
+  # app (it previously relied on dev/test-only ExAST and silently no-op'd
+  # everywhere else). Matches the property-access chain `<var>.effects.<axis>`
+  # for any variable name.
   defp effect_axis_referenced?(bodies, axis) do
-    if Code.ensure_loaded?(ExAST.Patcher) do
-      pattern = "ctx.effects.#{axis}"
-      Enum.any?(bodies, fn body -> apply(ExAST.Patcher, :find_all, [body, pattern]) != [] end)
-    else
-      false
-    end
+    Enum.any?(bodies, fn body ->
+      {_ast, found?} =
+        Macro.prewalk(body, false, fn
+          {{:., _, [{{:., _, [{var, _, var_ctx}, :effects]}, _, []}, ^axis]}, _, _} = node, _acc
+          when is_atom(var) and is_atom(var_ctx) ->
+            {node, true}
+
+          node, acc ->
+            {node, acc}
+        end)
+
+      found?
+    end)
   end
 
   defp emit_unwired_field_warnings(manifest, env) do

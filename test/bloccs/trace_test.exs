@@ -61,4 +61,37 @@ defmodule Bloccs.TraceTest do
     assert loaded == events
     assert Trace.reached(loaded) == Trace.reached(events)
   end
+
+  @tag :tmp_dir
+  test "load does not mint atoms from unknown names and drops those events", %{tmp_dir: tmp} do
+    path = Path.join(tmp, "hostile.bloccs-trace")
+
+    File.write!(path, ~s({
+      "network": "tnet",
+      "events": [
+        {"kind": "port_in", "node": "totally_unknown_node_zq1", "port": "in1"},
+        {"kind": "port_in", "node": "a", "port": "in1"},
+        {"kind": "not_a_kind"},
+        {"kind": "emit", "node": "a", "port": "out1",
+         "targets": [{"node": "unknown_target_zq2", "port": "in1"}, {"node": "b", "port": "in1"}]}
+      ]
+    }))
+
+    before_count = :erlang.system_info(:atom_count)
+    assert {:ok, loaded} = Trace.load(path)
+    assert :erlang.system_info(:atom_count) == before_count
+
+    # Known events survive; unknown names and malformed entries are dropped.
+    assert {:port_in, :a, :in1} in loaded
+    assert {:emit, :a, :out1, [{:b, :in1}]} in loaded
+    assert length(loaded) == 2
+  end
+
+  @tag :tmp_dir
+  test "load reports a malformed trace document instead of mis-loading it", %{tmp_dir: tmp} do
+    path = Path.join(tmp, "bad.bloccs-trace")
+    File.write!(path, ~s({"network": "tnet"}))
+
+    assert {:error, :malformed_trace} = Trace.load(path)
+  end
 end

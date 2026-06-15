@@ -389,10 +389,28 @@ defmodule Bloccs.RuntimeTest do
       {:ok, manifest} = Parser.parse_node_string(@retry_manifest)
       rcfg = %{cfg | manifest: manifest}
 
+      # The retry is scheduled into this node's own producer; it must exist or
+      # the message fails instead (see the no-producer test below).
+      producer = Bloccs.Router.producer_name(rcfg.network_id, rcfg.local_id, rcfg.in_port)
+      {:ok, pid} = Bloccs.Producer.start_link(name: producer)
+      on_exit(fn -> if Process.alive?(pid), do: GenStage.stop(pid) end)
+
       Runtime.process(msg(%{"bad" => true}), rcfg)
 
       assert_receive {:telemetry, [:bloccs, :node, :retry], %{delay_ms: _, next_attempt: 1},
                       %{reason: :rejected_by_pure}}
+    end
+
+    test "fails the message when a retry cannot be scheduled (producer gone)", %{cfg: cfg} do
+      {:ok, manifest} = Parser.parse_node_string(@retry_manifest)
+      rcfg = %{cfg | manifest: manifest}
+
+      # No producer registered for this node: the retry cannot be scheduled.
+      # The message must come back failed — not acked with a vanished retry.
+      assert %Message{status: {:failed, :rejected_by_pure}} =
+               Runtime.process(msg(%{"bad" => true}), rcfg)
+
+      refute_receive {:telemetry, [:bloccs, :node, :retry], _, _}
     end
 
     test "emits a :skipped event when a duplicate is dropped", %{cfg: cfg} do

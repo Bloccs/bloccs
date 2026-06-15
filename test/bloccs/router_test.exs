@@ -82,4 +82,43 @@ defmodule Bloccs.RouterTest do
     assert Router.pipeline_name(net, :n) == Router.pipeline_name(net, :n)
     refute Router.producer_name(net, :n, :p) == Router.pipeline_name(net, :n)
   end
+
+  test "edge tables survive a Router restart", %{net: net} do
+    on_exit(fn -> Router.unregister(net) end)
+    :ok = Router.register(net, [{{:a, :out}, [{:b, :in_b}]}])
+
+    old = Process.whereis(Router)
+    ref = Process.monitor(old)
+    Process.exit(old, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^old, :killed}, 1_000
+
+    # Wait for the supervisor to bring the singleton back.
+    new =
+      Enum.find_value(1..100, fn _ ->
+        Process.sleep(10)
+
+        case Process.whereis(Router) do
+          pid when is_pid(pid) and pid != old -> pid
+          _ -> nil
+        end
+      end)
+
+    assert is_pid(new)
+    # Before the persistent_term move this returned [] — every dispatch after
+    # a Router restart acked successfully while reaching nothing.
+    assert [{:b, :in_b}] = Router.lookup(net, :a, :out)
+  end
+
+  test "dispatch to a network with no registered edge table fails loudly", %{net: net} do
+    assert {:error, [{{:src, :out}, :network_not_registered}]} =
+             Router.dispatch(net, :src, :out, %{value: 1})
+  end
+
+  test "unregister removes the edge table", %{net: net} do
+    :ok = Router.register(net, [{{:a, :out}, [{:b, :in_b}]}])
+    assert [{:b, :in_b}] = Router.lookup(net, :a, :out)
+
+    :ok = Router.unregister(net)
+    assert [] = Router.lookup(net, :a, :out)
+  end
 end

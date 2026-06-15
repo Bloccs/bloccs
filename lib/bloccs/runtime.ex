@@ -351,13 +351,30 @@ defmodule Bloccs.Runtime do
     if Retry.retriable?(reason, policy, attempt) do
       delay = Retry.backoff_ms(policy, attempt)
       producer = Router.producer_name(cfg.network_id, cfg.local_id, cfg.in_port)
+
       # Preserve the message's lineage across the retry (it is the same message),
-      # bumping only the attempt count.
-      retry_meta = Map.put(msg.metadata, :bloccs_attempt, attempt + 1)
-      Producer.push_after(producer, msg.data, retry_meta, delay)
-      emit(:retry, %{delay_ms: delay, next_attempt: attempt + 1}, cfg, msg, %{reason: reason})
-      # Keep the reservation — the scheduled retry will complete or release it.
-      msg
+      # bumping only the attempt count. The dedup target rides along so a retry
+      # that can't be delivered (producer gone at fire time) can release its
+      # idempotency reservation instead of wedging the key until the TTL sweep.
+      retry_meta =
+        msg.metadata
+        |> Map.put(:bloccs_attempt, attempt + 1)
+        |> then(&if dedup, do: Map.put(&1, :bloccs_dedup, dedup), else: &1)
+
+      case Producer.push_after(producer, msg.data, retry_meta, delay) do
+        :ok ->
+          emit(:retry, %{delay_ms: delay, next_attempt: attempt + 1}, cfg, msg, %{reason: reason})
+          # Keep the reservation — the scheduled retry will complete or release it.
+          msg
+
+        :no_producer ->
+          # The producer is already gone (network tearing down or restarting):
+          # the retry can't even be scheduled. Fail the message loudly rather
+          # than acking work into the void.
+          release(dedup)
+          report_error(msg, cfg, phase, reason)
+          Message.failed(msg, reason)
+      end
     else
       # Terminal failure: release the reservation so the key can be reprocessed,
       # and surface the failure to any waiting request/response caller.

@@ -284,4 +284,46 @@ defmodule Bloccs.EffectsDBEctoTest do
       end
     end
   end
+
+  describe "SQL identifier validation" do
+    @injected ~s(name" = '' OR 1=1 --)
+
+    test "an injection-shaped filter column is denied before any SQL is built" do
+      Application.put_env(:bloccs, :test_repo_pid, self())
+      cap = cap(FakeRepo, allow: ["items:read"])
+
+      assert_raise Bloccs.Effects.Denied, ~r/invalid SQL identifier/, fn ->
+        EctoDB.all(cap, :items, %{@injected => "x"})
+      end
+
+      refute_received {:queried, _, _}
+    end
+
+    test "an injection-shaped update column is denied before any SQL is built" do
+      Application.put_env(:bloccs, :test_repo_pid, self())
+      cap = cap(FakeRepo, allow: ["items:update"])
+
+      assert_raise Bloccs.Effects.Denied, ~r/invalid SQL identifier/, fn ->
+        EctoDB.update(cap, :items, 1, %{@injected => "x"})
+      end
+
+      refute_received {:queried, _, _}
+    end
+
+    test "an injection-shaped insert column is denied before reaching the repo" do
+      Application.put_env(:bloccs, :test_repo_pid, self())
+      cap = cap(FakeRepo, allow: ["items:insert"])
+
+      assert_raise Bloccs.Effects.Denied, ~r/invalid SQL identifier/, fn ->
+        EctoDB.insert(cap, :items, %{@injected => "x"})
+      end
+
+      refute_received {:inserted, _, _, _}
+    end
+
+    test "ordinary identifiers still pass" do
+      cap = cap(FakeRepo, allow: ["items:read"])
+      assert {:ok, _} = EctoDB.all(cap, :items, %{"name" => "x", "owner_id" => 7})
+    end
+  end
 end

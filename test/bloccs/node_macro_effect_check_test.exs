@@ -34,4 +34,15 @@ defmodule Bloccs.NodeMacroEffectCheckTest do
     assert captured =~ "Declared:"
     assert captured =~ ":http"
   end
+
+  test "the walker matches the effects chain on any context variable name" do
+    fixture = Path.expand("../fixtures/leaky_node_renamed/impl.ex", __DIR__)
+
+    captured =
+      capture_io(:stderr, fn ->
+        Code.compile_file(fixture)
+      end)
+
+    assert captured =~ "effect :db used in effect_shell"
+  end
 end

@@ -1,0 +1,18 @@
+[node]
+id      = "leaky_renamed"
+version = "0.0.1"
+kind    = "transform"
+
+[ports.in]
+in_a = { schema = "X@1" }
+
+[ports.out]
+out_a = { schema = "X@1" }
+
+# Only http is declared. The impl leaks db via a context param NOT named `ctx`.
+[effects]
+http = { allow = ["api.example.com"], methods = ["GET"] }
+
+[contract]
+pure_core    = "Bloccs.Test.LeakyNodeRenamed.transform/2"
+effect_shell = "Bloccs.Test.LeakyNodeRenamed.execute/2"
