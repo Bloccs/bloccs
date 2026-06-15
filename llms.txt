@@ -76,7 +76,8 @@ end
 Then `mix deps.get`. Effect adapters are bring-your-own and opt-in: add
 `{:req, "~> 0.5"}` for the real HTTP backend and point the DB backend at your Ecto
 repo. To start from a runnable scaffold: `mix archive.install hex bloccs`, then
-`mix bloccs.new my_flow`.
+`mix bloccs.new my_flow`. To add bloccs to an app you already have:
+`mix bloccs.gen.node <name>` and `mix bloccs.gen.network <name>`.
 
 The loop over a `.bloccs` network is `mix bloccs.validate` → `mix bloccs.compile`
 → `mix bloccs.run --message <json>`.
