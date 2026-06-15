@@ -19,11 +19,13 @@ You describe a graph of processing stages as TOML; bloccs type-checks the
 wiring, enforces what each stage is allowed to do, and compiles it to a
 Broadway/GenStage supervision tree.
 
-> **Experimental — early and moving fast.** The public API and the manifest
-> format may change between releases, and bloccs isn't durable (put Oban or a
-> broker at the edges for work that must survive restarts). Great for exploring
-> and prototyping — pin a version and check the [CHANGELOG](CHANGELOG.md) before
-> you upgrade.
+> **Pre-1.0 — moving fast.** The public API and the manifest format may still
+> change between minor releases, so pin a version and check the
+> [CHANGELOG](CHANGELOG.md) before you upgrade. The runtime is built for
+> production within its lane: supervised, back-pressured, capability-checked, with
+> retry / timeout / idempotency / telemetry wired in. The one thing it leaves out
+> by design is durability — in-flight messages live in memory, so put Oban or a
+> broker at the edges for work that must survive restarts.
 
 <p align="center">
   <img width="880" alt="The events example — a webhook processor: ingest → validate → enrich → route, fanning out to persist and notify, dead-lettering unknown event types" src="assets/events-hero.png">
@@ -379,6 +381,12 @@ the implementation.
 So you can hand the repetitive parts to an assistant and stay in control of the
 *shape* of the system, instead of drowning in generated code you have to audit
 line by line.
+
+> **Pointing an assistant at bloccs?**
+> [`llms.txt`](https://github.com/Bloccs/bloccs/blob/main/llms.txt) is a
+> machine-readable summary — what bloccs is (and isn't), when to use it, when not
+> to, and links to every guide. [`guides/recipes.md`](guides/recipes.md) has
+> copy-pasteable end-to-end manifests for the common shapes.
 
 ## Examples
 

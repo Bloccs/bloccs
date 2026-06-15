@@ -15,6 +15,7 @@ mind below.
 | **Reactor** (Ash) | per-invocation saga / dependency graph | no (in-process) | you orchestrate one request's steps with rollback/compensation, then return |
 | **Temporal** | durable execution, workflow-as-code | yes (event history) | you need cross-service, multi-day workflows that survive process/host crashes |
 | **LangGraph** | Python agent graph (cyclic, shared state) | optional checkpoints | you're in Python and building dynamic LLM agent loops |
+| **boundary** | compile-time module-dependency rules | n/a | the invariant is "component A may never call component B" — a call-graph property, not declared I/O |
 | **plain GenServer/Task** | bespoke processes | no | the work isn't a dataflow graph — it's ad-hoc state or one-off concurrency |
 
 ## Why not Broadway directly?
@@ -54,6 +55,25 @@ the unit of work is a *message flowing through a graph*. They compose cleanly: a
 bloccs effect shell can enqueue an Oban job, and an Oban worker can push a message
 into a bloccs network. bloccs does not try to be durable; if you need durability
 today, put Oban (or a broker) at the edges.
+
+## boundary
+
+[boundary](https://github.com/dimitarvp/boundary) (Saša Jurić) enforces
+**module-dependency rules at compile time**: declare that the `Ingest` component
+may not depend on `Mailer`, and a reference from one to the other fails the build.
+It governs the *call graph*.
+
+bloccs governs *declared I/O*: a node lists the HTTP hosts, DB scopes, clock, and
+randomness it may touch, and undeclared use is refused at runtime (and warned at
+compile time). Those are different properties. "This code path can never reach a
+sender" is a module-dependency invariant — boundary's home turf, and you want it
+to fail the build. "This node may only `GET` from `enrichment.local`" is a
+declared-capability property — bloccs'.
+
+They compose: use boundary to keep components from referencing each other, and
+bloccs to scope what a node's effect shell may do to the outside world. If your
+safety requirement is "component A is *incapable* of calling component B," reach
+for boundary; bloccs is not a substitute for it, and doesn't try to be.
 
 ## Reactor (Ash)
 
@@ -107,4 +127,6 @@ Use bloccs for the dataflow; use the BEAM primitives for everything else.
 **Short version:** bloccs is for *typed, inspectable dataflow graphs on the BEAM*
 that need explicit effects, back-pressure, retries, and a generated supervision
 tree. If you need durability, reach for Oban or Temporal at the edges; if you have
-a single pipeline, use Broadway directly; if you need per-call sagas, use Reactor.
+a single pipeline, use Broadway directly; if you need per-call sagas, use Reactor;
+if you need compile-time module-dependency isolation, use boundary (alongside, not
+instead of, bloccs).

@@ -6,6 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-06-15
+
+Docs and positioning, no code changes.
+
+### Added
+
+- **`llms.txt`** at the repo root (and in the Hex package): a machine-readable
+  summary for coding assistants — what bloccs is and isn't, when to use it, when
+  not to, and links to every guide. Disambiguates bloccs (a dataflow-graph
+  library) from "blocks" page-builders.
+- **`guides/recipes.md`** — copy-pasteable end-to-end manifests for the common
+  shapes: bulk classification through a rate-limited model (back-pressured),
+  multi-stage RAG, entering a network from a web request, and composing Oban at
+  the edges for durability.
+- **`boundary` in the comparison guide** — when to reach for compile-time
+  module-dependency isolation versus bloccs' declared-I/O effects, and how they
+  compose.
+
+### Changed
+
+- **README maturity framing.** The header note no longer reads as
+  "prototyping-grade"; it now separates pre-1.0 API churn (still true) from the
+  runtime's production posture (supervised, back-pressured, capability-checked),
+  with durability called out as an explicit design boundary to put Oban at, not a
+  maturity gap.
+
 ## [0.9.0] — 2026-06-11
 
 A hardening release: every change makes an existing guarantee true rather than
