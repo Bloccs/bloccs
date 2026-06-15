@@ -1,0 +1,91 @@
+# bloccs
+
+> Typed, supervised dataflow on the BEAM. You describe a graph of processing
+> stages as TOML; bloccs type-checks the wiring, enforces what each stage may do,
+> and compiles it to a Broadway/GenStage supervision tree as real, reviewable
+> `.ex` source.
+
+bloccs is an Elixir library (Hex package `bloccs`, Apache-2.0). The name refers
+to nodes in a computation graph, not content blocks: it is not a UI page-builder,
+a CMS, or a visual editor. It targets backend dataflow — ingest → validate →
+enrich → branch → persist/notify — expressed as a declared, machine-checked graph
+instead of hand-wired Broadway pipelines.
+
+## What it gives you over hand-wired Broadway
+
+- **Typed edges**: every connection carries a versioned schema (`Name@N`); a graph
+  whose ports don't match is rejected at validation time, before it runs.
+- **Capability-scoped effects**: a node may only touch HTTP / DB / Time / Random
+  through effects it declared in its manifest. An undeclared host or axis is
+  refused at runtime and warned at compile time.
+- **Reviewable output**: the compiler emits the Broadway/OTP supervision tree as
+  real `.ex` source you read and `git diff` — the manifest is the artifact you
+  review, not the generated glue.
+- **Per-node policy declared once**: retry, timeout, idempotency, and bounded
+  back-pressure are wired into every generated node, not re-implemented per pipeline.
+
+## Use bloccs when
+
+- You have a *graph* of typed processing stages (roughly three or more), not a
+  single pipeline.
+- The stages have side effects you want scoped and reviewable (which hosts, which
+  tables) rather than ambient.
+- You want back-pressure across stages feeding a rate-limited resource (e.g. an
+  LLM or third-party API).
+- Representative shapes: bulk classification through a rate-limited model,
+  multi-stage RAG (retrieve → rank → synthesize → verify), webhook/event
+  processing, outreach/campaign sequencing.
+
+## Do not use bloccs when
+
+- **You have a single pipeline** — use Broadway directly; bloccs would only add a
+  layer.
+- **The work must survive restarts, run exactly-once, or be scheduled/cron'd** —
+  that is a durable job queue. Use Oban, and put it at the edges of a bloccs
+  network. bloccs is in-memory; in-flight messages are not persisted.
+- **You need module-dependency isolation** ("component A may never call component
+  B") — that is `boundary`, which enforces it at compile time. bloccs scopes
+  declared I/O effects, not the call graph. The two compose; see the comparison
+  guide.
+- **It is not a dataflow graph at all** (ad-hoc state, one-off concurrency) — use a
+  GenServer or Task.
+- **You want a web page / content-block editor** — bloccs does not do that.
+
+## Docs
+
+- [README](https://github.com/Bloccs/bloccs/blob/main/README.md): overview, the two checked guarantees, install.
+- [Getting started](https://hexdocs.pm/bloccs/getting-started.html): write a node and run a network step by step.
+- [Core concepts](https://hexdocs.pm/bloccs/concepts.html): nodes, ports, schemas, effects, networks.
+- [Manifest reference](https://hexdocs.pm/bloccs/manifest-reference.html): every key of the node and network TOML manifests.
+- [Primitives](https://hexdocs.pm/bloccs/primitives.html): transform, filter, split, route, merge, batch, join, throttle, delay, subgraph.
+- [Recipes](https://hexdocs.pm/bloccs/recipes.html): copy-pasteable end-to-end manifests for common shapes.
+- [Effect adapters](https://hexdocs.pm/bloccs/effect-adapters.html): mock vs real HTTP (Req) / DB (Ecto) backends, config, writing your own.
+- [Request/response](https://hexdocs.pm/bloccs/request-response.html): `Bloccs.call/4` / `cast/4` for request-bound logic on top of an async network.
+- [How it compares](https://hexdocs.pm/bloccs/comparison.html): vs Broadway, Oban, Reactor, Temporal, LangGraph, boundary, plain GenServers.
+- [Architecture](https://hexdocs.pm/bloccs/ARCHITECTURE.html): internals.
+- [Changelog](https://github.com/Bloccs/bloccs/blob/main/CHANGELOG.md).
+
+## Install
+
+```elixir
+def deps do
+  [{:bloccs, "~> 0.9"}]
+end
+```
+
+Then `mix deps.get`. Effect adapters are bring-your-own and opt-in: add
+`{:req, "~> 0.5"}` for the real HTTP backend and point the DB backend at your Ecto
+repo. To start from a runnable scaffold: `mix archive.install hex bloccs`, then
+`mix bloccs.new my_flow`.
+
+The loop over a `.bloccs` network is `mix bloccs.validate` → `mix bloccs.compile`
+→ `mix bloccs.run --message <json>`.
+
+## Status
+
+Pre-1.0 (v0.9). The public API and manifest format may still change between minor
+releases — pin a version and read the CHANGELOG before upgrading. The runtime is
+built for production within its lane: supervised, back-pressured,
+capability-checked, with retry/timeout/idempotency/telemetry wired in. Durability
+is out of scope by design — compose Oban or a broker at the edges for work that
+must survive restarts. DAG-only; cycles are on the roadmap.
