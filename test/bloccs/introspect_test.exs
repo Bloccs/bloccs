@@ -121,6 +121,12 @@ defmodule Bloccs.IntrospectTest do
       assert Enum.all?(net.nodes, &(&1.reply == false))
     end
 
+    test "exposes capability-linter status; nodes default to enforced", %{net: net} do
+      # No node in the events example opts out, so all are linter-enforced with
+      # no extra allows — an observer can trust the effect badges for every one.
+      assert Enum.all?(net.nodes, &(&1.lint == %{enforced: true, allow: []}))
+    end
+
     test "carries per-node concurrency from the deploy block", %{net: net} do
       by_id = Map.new(net.nodes, &{&1.id, &1})
       assert by_id[:enrich].concurrency == 4

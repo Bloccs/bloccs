@@ -37,6 +37,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `allow = ["My.Vetted.Lib"]` permits specific extra modules without turning
   enforcement off wholesale.
 
+- **Linter status in introspection** — `Bloccs.Introspect` node views now carry
+  a `lint: %{enforced: boolean, allow: [module]}` field, so an observer (e.g. the
+  dashboard) can surface a node that opted out of the linter — "read this body"
+  — instead of letting the effect badges imply it was checked.
+
 ### Changed
 
 - ⚠️ **Behavior change.** Node bodies that reached the world outside the facade

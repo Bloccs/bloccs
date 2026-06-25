@@ -101,12 +101,24 @@ defmodule Bloccs.Introspect do
       effects: Effects.declared(manifest.effects),
       effect_detail: effect_detail(manifest.effects),
       reply: manifest.reply,
+      lint: lint(manifest.lint),
       concurrency: concurrency,
       doc: doc(manifest.doc),
       contract: contract(manifest.contract),
       config: config(manifest)
     }
   end
+
+  # Capability-linter status for the node. `enforced: true` (the default) means
+  # the compiler proved the node body only reaches the world through declared
+  # effects. `enforced: false` means the node opted out (`[lint] effects = "off"`)
+  # — its body can bypass the facade, so an observer should flag it for a human
+  # read rather than trust the effect badges alone. `allow` lists any extra
+  # modules the node permitted past the facade.
+  defp lint(nil), do: %{enforced: true, allow: []}
+
+  defp lint(%Bloccs.Manifest.Lint{enforce: enforce, allow: allow}),
+    do: %{enforced: enforce, allow: allow}
 
   # The declared detail per effect axis (`nil` where the axis isn't declared) —
   # so an observer can render *what* a node may reach, not just *which* axes.
