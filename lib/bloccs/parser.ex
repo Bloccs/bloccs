@@ -20,6 +20,7 @@ defmodule Bloccs.Parser do
     Batch,
     Join,
     Rate,
+    Lint,
     Doc,
     Port
   }
@@ -122,6 +123,7 @@ defmodule Bloccs.Parser do
         {:join, "[join]", &cast_join/1, true},
         {:rate, "[rate]", &cast_rate/1, true},
         {:delay_ms, "[delay]", &cast_delay/1, true},
+        {:lint, "[lint]", &cast_lint/1, true},
         {:observability, "[observability]", &cast_observability/1, true}
       ])
 
@@ -143,6 +145,7 @@ defmodule Bloccs.Parser do
         rate: fields[:rate],
         delay_ms: fields[:delay_ms],
         reply: meta.reply,
+        lint: fields[:lint],
         observability: fields[:observability] || %{}
       }
 
@@ -211,6 +214,7 @@ defmodule Bloccs.Parser do
   defp fetch_raw(map, :join), do: Map.get(map, "join", :missing)
   defp fetch_raw(map, :rate), do: Map.get(map, "rate", :missing)
   defp fetch_raw(map, :delay_ms), do: Map.get(map, "delay", :missing)
+  defp fetch_raw(map, :lint), do: Map.get(map, "lint", :missing)
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
 
   defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k} = map) do
@@ -456,6 +460,29 @@ defmodule Bloccs.Parser do
   end
 
   defp cast_observability(_), do: {:ok, %{}}
+
+  # `[lint]` — opt out of / loosen the capability linter.
+  #   effects = "off"        → downgrade out-of-facade calls to a warning
+  #   allow   = ["My.Mod"]   → extra permitted modules
+  defp cast_lint(map) when is_map(map) do
+    enforce =
+      case Map.get(map, "effects", "on") do
+        "off" -> false
+        false -> false
+        _ -> true
+      end
+
+    allow =
+      case Map.get(map, "allow", []) do
+        list when is_list(list) -> Enum.filter(list, &is_binary/1)
+        _ -> []
+      end
+
+    {:ok, %Lint{enforce: enforce, allow: allow}}
+  end
+
+  defp cast_lint(_),
+    do: {:error, [%Error{section: "[lint]", message: "expected a table"}]}
 
   # ---------- network cast ----------
 

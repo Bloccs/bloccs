@@ -6,12 +6,19 @@ defmodule Bloccs.Node do
   `pure_core` / `effect_shell` functions exist with the right arity, and
   exposes the parsed manifest via `__bloccs_manifest__/0`.
 
-  ## Compile-time effect AST check
+  ## Compile-time effect checks
 
-  The macro walks the body of `effect_shell` after compilation finishes and
-  emits a warning (not an error) for any `ctx.effects.X.*` access where `X`
-  is not declared in `[effects]`. Promoting the warning to a hard compile
-  error is post-v0.1 — for now the runtime capability struct backstops it.
+  After compilation finishes, the macro walks the `pure_core` and `effect_shell`
+  bodies and enforces two things:
+
+  - **Undeclared-axis use** — a `ctx.effects.X.*` access for an axis `X` not
+    declared in `[effects]` emits a warning (the runtime capability struct
+    raises `Bloccs.Effects.Denied` either way).
+  - **Capability linting** (`Bloccs.Node.EffectLint`) — a node body that reaches
+    the world outside the declared-capability facade (direct `File.write!`,
+    `System.cmd`, `Req.get`, `spawn`, dynamic dispatch, …) is a **compile error**,
+    so the facade is the only legal path to IO. A node may opt out with
+    `[lint] effects = "off"`, which downgrades the error to a loud warning.
 
   ## Example
 
@@ -121,7 +128,27 @@ defmodule Bloccs.Node do
     end)
 
     walk_effect_shell_for_undeclared(env, shell, manifest)
+
+    Bloccs.Node.EffectLint.lint(env, :pure_core, clause_bodies(env, pure), manifest.lint)
+    Bloccs.Node.EffectLint.lint(env, :effect_shell, clause_bodies(env, shell), manifest.lint)
   end
+
+  # Returns the list of clause body ASTs for an in-module function ref, or `[]`
+  # when the function lives in another module (we can't fetch its definition
+  # from this env) or can't be read.
+  defp clause_bodies(env, %{module: mod, function: fun, arity: arity}) when mod == env.module do
+    case Module.get_definition(env.module, {fun, arity}) do
+      {:v1, _kind, _meta, clauses} when is_list(clauses) ->
+        Enum.map(clauses, fn {_meta, _args, _guards, body} -> body end)
+
+      _ ->
+        []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp clause_bodies(_env, _ref), do: []
 
   defp walk_effect_shell_for_undeclared(
          env,

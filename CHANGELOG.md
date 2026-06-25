@@ -6,6 +6,50 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-06-25
+
+### Added
+
+- **Capability linter (`Bloccs.Node.EffectLint`)** — a compile-time pass that
+  makes the declared-capability facade the **only** legal path to the world from
+  a node body. It walks the `pure_core` and `effect_shell` clause bodies and
+  rejects, as a `CompileError`, any call that reaches the world outside the
+  facade: direct IO (`File.*`, `IO.*`, `System.cmd`), HTTP clients (`Req`,
+  `:httpc`, …), storage (`:ets`, raw sockets), process/messaging escapes
+  (`spawn`, `send`, `receive`, `Task.*`), ambient nondeterminism
+  (`DateTime.utc_now` → the `time` effect), config mutation
+  (`Application.put_env`), and unanalyzable dynamic dispatch (`apply/3`, calls on
+  a computed module, captures of denied modules). Permitted: the effect facade
+  (`effect_shell` only — `pure_core` must be side-effect-free), a curated pure
+  stdlib, read-only `Application` config, and modules in the node's own OTP app.
+
+  This upgrades the previous **advisory** effect check (an `IO.warn` that only
+  saw `ctx.effects.X` misuse and never direct calls) into an **enforced**
+  guarantee. Within the trusted base (the linter + the effect adapters) a node's
+  declared capabilities are now unbypassable for the restricted module surface —
+  it is no longer necessary to read a node body line-by-line to know it can't
+  touch undeclared IO. It is a capability *discipline*, not a sound effect system
+  (see the module's "Honest scope" notes).
+
+- **`[lint]` manifest section** — `effects = "off"` opts a node out of
+  enforcement (violations downgrade to a single loud warning, and the opt-out is
+  recorded on the manifest so tooling can flag the node for review);
+  `allow = ["My.Vetted.Lib"]` permits specific extra modules without turning
+  enforcement off wholesale.
+
+- **Linter status in introspection** — `Bloccs.Introspect` node views now carry
+  a `lint: %{enforced: boolean, allow: [module]}` field, so an observer (e.g. the
+  dashboard) can surface a node that opted out of the linter — "read this body"
+  — instead of letting the effect badges imply it was checked.
+
+### Changed
+
+- ⚠️ **Behavior change.** Node bodies that reached the world outside the facade
+  used to compile (with at most a warning); they are now a compile error by
+  default. Migrate by routing the call through a declared effect
+  (`ctx.effects.http/db/time/random`), or — for a vetted exception — add the
+  module to `[lint] allow` or set `[lint]\n effects = "off"` on that node.
+
 ## [0.10.0] — 2026-06-15
 
 ### Added

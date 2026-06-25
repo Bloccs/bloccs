@@ -6,7 +6,7 @@ defmodule Bloccs.Manifest.Node do
   and the (future) canvas renders.
   """
 
-  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch, Join, Rate}
+  alias Bloccs.Manifest.{Effects, Port, Contract, Doc, Batch, Join, Rate, Lint}
 
   @type kind :: :source | :transform | :router | :sink
 
@@ -25,6 +25,7 @@ defmodule Bloccs.Manifest.Node do
           rate: Rate.t() | nil,
           delay_ms: pos_integer() | nil,
           reply: boolean(),
+          lint: Lint.t() | nil,
           observability: %{optional(atom()) => term()}
         }
 
@@ -43,6 +44,7 @@ defmodule Bloccs.Manifest.Node do
     :join,
     :rate,
     :delay_ms,
+    :lint,
     reply: false,
     observability: %{}
   ]
@@ -141,6 +143,28 @@ defmodule Bloccs.Manifest.Effects do
       end
     end)
   end
+end
+
+defmodule Bloccs.Manifest.Lint do
+  @moduledoc """
+  Capability-linter config from `[lint]`. Controls the compile-time check that
+  a node's `pure_core` / `effect_shell` bodies only reach the world through the
+  declared-capability facade (see `Bloccs.Node.EffectLint`).
+
+  - `enforce` — `true` (default) makes an out-of-facade call a compile error;
+    `false` (from `effects = "off"`) downgrades it to a single loud warning so
+    the node still compiles. A node that opts out is surfaced by tooling as an
+    explicit "read this one" — the residual review stays visible.
+  - `allow` — extra module names (`"My.Vetted.Lib"`) treated as permitted, for
+    a surgical exception without turning enforcement off wholesale.
+  """
+
+  @type t :: %__MODULE__{
+          enforce: boolean(),
+          allow: [String.t()]
+        }
+
+  defstruct enforce: true, allow: []
 end
 
 defmodule Bloccs.Manifest.Batch do
