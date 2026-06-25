@@ -149,6 +149,22 @@ mix deps.get
 mix bloccs.run networks/hello.bloccs --message '{"name": "ada"}'
 ```
 
+### Add bloccs to an existing app
+
+Already have a Mix project? Add the dep, then generate nodes and a network in
+place instead of scaffolding a new one:
+
+```bash
+mix bloccs.gen.node ingest --kind source   # nodes/ingest.bloccs + lib/nodes/ingest.ex
+mix bloccs.gen.node enrich                  # a transform node
+mix bloccs.gen.network pipeline --node ingest --node enrich
+```
+
+`gen.node` writes a manifest (`nodes/<name>.bloccs`) and its implementation
+(`lib/nodes/<name>.ex` — a pure core + effect shell, skeletoned by `--kind`);
+`gen.network` writes the topology. Register the port schemas the nodes reference,
+fill in the `[[edges]]`, then `mix bloccs.validate networks/pipeline.bloccs`.
+
 ## Typed edges and scoped effects
 
 This is the part you can't get from hand-wired Elixir. Both examples below are
@@ -351,6 +367,8 @@ hitting real HTTP + SQLite (zero external services) lives in
 ### CLI (Mix tasks)
 
 - `mix bloccs.new <name>` — scaffold a new project
+- `mix bloccs.gen.node <name> [--kind <kind>]` — add a node (manifest + impl) to an existing app
+- `mix bloccs.gen.network <name> [--node <node>]...` — add a network manifest to an existing app
 - `mix bloccs.validate <file>` — schema / contract / DAG checks on a node or network
 - `mix bloccs.compile <network>` — emit the Broadway supervision tree
 - `mix bloccs.run <network> --message <json> [--trace <out>]` — start the tree,

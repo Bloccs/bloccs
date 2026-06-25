@@ -6,6 +6,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-06-15
+
+### Added
+
+- **`mix bloccs.gen.node <name>` and `mix bloccs.gen.network <name>`** — add a
+  node (manifest + pure-core/effect-shell implementation) or a network manifest
+  to an **existing** Mix project, the gap `mix bloccs.new` (whole-project
+  scaffold) didn't cover. `gen.node` takes `--kind transform|source|sink|router`
+  (skeletons the ports and the effect-shell return) and `--module <Base>`
+  (defaults to the current app); `gen.network` seeds `[nodes]` from repeatable
+  `--node` flags. Both refuse to overwrite existing files.
+
 ## [0.9.1] — 2026-06-15
 
 Docs and positioning, no code changes.
