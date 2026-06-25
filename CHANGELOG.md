@@ -6,6 +6,37 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-06-25
+
+### Added
+
+- **Transitive capability lint (`mix bloccs.lint`, `Bloccs.Lint.Transitive`).** The
+  0.11 compile-time linter is intraprocedural — it checks a node's own
+  `pure_core` / `effect_shell` body but permits calls into same-application helper
+  modules without traversing them, so a body could reach the world through one hop
+  of indirection (`MyApp.Helper.persist/1`, where `MyApp.Helper` does
+  `File.write!`). This pass closes that gap: from each node's two contract
+  functions it walks the call graph over same-app helpers — reading their bodies
+  from BEAM abstract code (`Bloccs.Lint.Beam`) — and applies the same capability
+  policy to every reachable call. It is what makes "the declared-effect facade is
+  the only path to the world" hold through helper indirection, not just for
+  directly-written calls.
+
+  Run `mix bloccs.lint` in CI / `mix check`; it exits non-zero on a transitive
+  violation. Requires modules compiled with debug info (the `dev`/`test` default);
+  a helper whose BEAM has no abstract code is reported as unanalyzable rather than
+  assumed safe. Compiler-generated calls (e.g. `map.field` access, which expands
+  to an `:elixir_erl_pass` fallback) are not treated as author effects.
+
+### Changed
+
+- **Closed nondeterminism gaps in the capability policy.** `:rand` is now denied
+  with a "use `ctx.effects.random`" message (it was rejected by the allowlist
+  default, with a generic message); `:erlang.unique_integer` and `make_ref/0` are
+  rejected as ambient nondeterminism. The `Bloccs.Node.EffectLint` classification
+  is now a shared `classify/3` used by both the intraprocedural and transitive
+  passes.
+
 ## [0.11.0] — 2026-06-25
 
 ### Added

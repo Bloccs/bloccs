@@ -102,12 +102,17 @@ The guarantee is **capability-based** and has three layers:
    walks the `pure_core` and `effect_shell` bodies and makes the facade the
    *only* legal path to the world: a node that calls `File.write!`, `System.cmd`,
    `Req.get`, `:httpc`, `spawn`/`send`, `DateTime.utc_now`, or any other
-   out-of-facade module is a **`CompileError`**. This is what lets you accept a
-   node from the declared capabilities alone, without reading the body line by
-   line to confirm it didn't reach around the facade. It is a capability
-   *discipline*, not a sound effect system — the trusted base is the linter plus
-   the adapters (a node calling its own app's `Repo` directly, or a `[lint]`
-   opt-out, are out of scope).
+   out-of-facade module is a **`CompileError`**. This pass is intraprocedural — it
+   checks the node body itself and permits calls into same-app helper modules.
+   **`mix bloccs.lint`** extends it transitively: it follows each node's contract
+   functions through the same-app helpers they call and applies the same policy to
+   every reachable call, so the facade is the only path to the world through helper
+   indirection too, not just for directly-written calls. Run it in CI. Together
+   this is what lets you accept a node from the declared capabilities alone,
+   without reading the bodies to confirm they didn't reach around the facade. It is
+   a capability *discipline*, not a sound effect system — the trusted base is the
+   linter plus the adapters (a `[lint]` opt-out, or a helper whose BEAM lacks debug
+   info, are out of scope).
 3. **Compile-time hint.** Within the facade, using `ctx.effects.X.*` for an axis
    `X` you didn't declare is a warning — a fast "you forgot to declare that
    effect" signal (the runtime stub backstops it either way).

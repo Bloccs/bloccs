@@ -98,6 +98,22 @@ defmodule Bloccs.Node.EffectLintTest do
     test "DateTime arithmetic is pure and allowed" do
       refute_lint(:pure_core, quote(do: DateTime.add(dt, 1, :second)))
     end
+
+    test ":rand is steered to the random effect" do
+      assert_rejects(:effect_shell, quote(do: :rand.uniform(10)), "ctx.effects.random")
+    end
+
+    test ":erlang.unique_integer (ambient) is rejected" do
+      assert_rejects(
+        :pure_core,
+        quote(do: :erlang.unique_integer([:monotonic])),
+        "nondeterminism"
+      )
+    end
+
+    test "make_ref is rejected (a pure core must be deterministic)" do
+      assert_rejects(:pure_core, quote(do: make_ref()), "deterministic")
+    end
   end
 
   describe "the facade is allowed in effect_shell, not pure_core" do
