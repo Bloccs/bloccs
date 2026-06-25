@@ -121,7 +121,8 @@ defmodule Bloccs.Node.EffectLint do
     :ets => "ETS is outside the facade (use a declared `db` effect for state)",
     :dets => "DETS is outside the facade",
     :mnesia => "mnesia is outside the facade",
-    :rpc => "distribution is outside the facade"
+    :rpc => "distribution is outside the facade",
+    :rand => "randomness is the `random` effect — use ctx.effects.random"
   }
 
   # Effectful functions on otherwise-permitted modules: ambient nondeterminism
@@ -159,7 +160,11 @@ defmodule Bloccs.Node.EffectLint do
     {:erlang, :system_time} => "reading the clock is the `time` effect — use ctx.effects.time",
     {:erlang, :monotonic_time} => "reading the clock is the `time` effect — use ctx.effects.time",
     {:erlang, :timestamp} => "reading the clock is the `time` effect — use ctx.effects.time",
-    {:erlang, :now} => "reading the clock is the `time` effect — use ctx.effects.time"
+    {:erlang, :now} => "reading the clock is the `time` effect — use ctx.effects.time",
+    {:erlang, :unique_integer} =>
+      "unique_integer is ambient nondeterminism — derive it or use ctx.effects.random",
+    {:erlang, :make_ref} =>
+      "make_ref is nondeterministic — a pure core must be deterministic; pass a correlation key in"
   }
 
   # Imported (Kernel) / special-form names that escape the facade.
@@ -168,7 +173,9 @@ defmodule Bloccs.Node.EffectLint do
     spawn: "spawning is outside the facade (the supervision tree owns concurrency)",
     spawn_link: "spawning is outside the facade (the supervision tree owns concurrency)",
     spawn_monitor: "spawning is outside the facade (the supervision tree owns concurrency)",
-    apply: "dynamic dispatch (apply) is not statically analyzable — call the module directly"
+    apply: "dynamic dispatch (apply) is not statically analyzable — call the module directly",
+    make_ref:
+      "make_ref is nondeterministic — a pure core must be deterministic; pass a correlation key in"
   }
 
   @doc """
@@ -266,52 +273,87 @@ defmodule Bloccs.Node.EffectLint do
   # ---- classification ----
 
   defp verdict(module, fun, meta, ctx) do
+    case classify(module, fun, ctx) do
+      {:deny, reason} -> [{line(meta), reason}]
+      # `:ok` and `{:follow, _}` are both permitted for a directly-written call;
+      # the transitive pass is what follows `{:follow, _}` into the helper.
+      _ -> []
+    end
+  end
+
+  @doc """
+  Classify a single call target `module.fun` under `ctx` (`%{kind, app, ns,
+  allow}`). Shared by the intraprocedural walker (this module) and the transitive
+  call-graph pass (`Bloccs.Lint.Transitive`).
+
+  - `:ok` — permitted and terminal (facade, pure stdlib, config, explicit allow,
+    exception callback).
+  - `{:follow, module}` — a same-application / same-namespace module: permitted
+    for a directly-written call, but a target the transitive pass must traverse.
+  - `{:deny, reason}` — a capability violation.
+  """
+  @spec classify(module(), atom(), map()) :: :ok | {:follow, module()} | {:deny, String.t()}
+  def classify(module, fun, ctx) do
     cond do
       # Ambient nondeterminism / config mutation: denied even on otherwise-allowed
       # modules and not overridable by [lint] allow — these are determinism
       # guarantees, not a module-surface question.
       Map.has_key?(@deny_funs, {module, fun}) ->
-        [{line(meta), "#{inspect(module)}.#{fun}: #{Map.fetch!(@deny_funs, {module, fun})}"}]
+        {:deny, "#{inspect(module)}.#{fun}: #{Map.fetch!(@deny_funs, {module, fun})}"}
 
       # Author's explicit opt-in wins over the module denylist.
       MapSet.member?(ctx.allow, module) ->
-        []
+        :ok
 
       module in @facade ->
         if ctx.kind == :effect_shell do
-          []
+          :ok
         else
-          [
-            {line(meta),
-             "pure_core must be side-effect-free; #{inspect(module)} is an effect facade — " <>
-               "move this call to effect_shell"}
-          ]
+          {:deny,
+           "pure_core must be side-effect-free; #{inspect(module)} is an effect facade — " <>
+             "move this call to effect_shell"}
         end
 
       Map.has_key?(@deny_modules, module) ->
-        [{line(meta), "#{inspect(module)}.#{fun}: #{Map.fetch!(@deny_modules, module)}"}]
+        {:deny, "#{inspect(module)}.#{fun}: #{Map.fetch!(@deny_modules, module)}"}
 
       MapSet.member?(@pure_stdlib, module) ->
-        []
+        :ok
 
       MapSet.member?(@config_modules, module) ->
-        []
+        :ok
 
       same_app?(module, ctx) or same_namespace?(module, ctx) ->
-        []
+        {:follow, module}
 
       # Exception construction (`raise Foo` expands to `Foo.exception/1`) is pure
       # control flow, allowed regardless of the exception module.
       fun in [:exception, :message] ->
-        []
+        :ok
 
       true ->
-        [
-          {line(meta),
-           "#{inspect(module)}.#{fun} is outside the permitted set (effect facade + pure " <>
-             "stdlib + this app). If it is vetted and pure, add it to [lint] allow."}
-        ]
+        {:deny,
+         "#{inspect(module)}.#{fun} is outside the permitted set (effect facade + pure " <>
+           "stdlib + this app). If it is vetted and pure, add it to [lint] allow."}
     end
+  end
+
+  @doc "The set of effect-facade modules (permitted only in `effect_shell`)."
+  def facade, do: @facade
+
+  @doc """
+  Build the classification context the transitive pass passes to `classify/3`:
+  `%{kind, app, ns, allow}`. (The intraprocedural walker builds its own, which
+  additionally carries `:env` for alias expansion.)
+  """
+  @spec context(:pure_core | :effect_shell, module(), atom(), Lint.t() | nil) :: map()
+  def context(kind, module, app, lint) do
+    %{
+      kind: kind,
+      app: app,
+      ns: namespace_of(module),
+      allow: if(lint, do: modules_from_strings(lint.allow), else: MapSet.new())
+    }
   end
 
   # ---- helpers ----

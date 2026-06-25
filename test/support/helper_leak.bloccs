@@ -1,0 +1,19 @@
+[node]
+id      = "helper_leak"
+version = "0.0.1"
+kind    = "transform"
+
+[ports.in]
+in = { schema = "T@1" }
+
+[ports.out]
+out = { schema = "T@1" }
+
+# No effects declared. The node body itself is clean (it only calls same-app
+# helpers, which the intraprocedural linter permits), but one helper reaches the
+# world through File.write! — the transitive pass must catch it.
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Test.HelperLeak.Node.transform/2"
+effect_shell = "Bloccs.Test.HelperLeak.Node.execute/2"
