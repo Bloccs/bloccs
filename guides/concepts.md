@@ -92,15 +92,29 @@ function call you happen to make, but a permission stated up front in
 | `time` | `"wall_clock"` or `"none"` | reading the clock |
 | `random` | `"none"`, `"pseudo"`, or `"crypto"` | randomness |
 
-The guarantee is **capability-based** and has two layers:
+The guarantee is **capability-based** and has three layers:
 
 1. **Runtime (load-bearing).** At bind time each *declared* axis becomes a real
    adapter; each *undeclared* axis becomes a denied-capability stub whose
    every method raises `Bloccs.Effects.Denied`. Declared adapters still enforce
    the per-call allowlist (an HTTP call to a host not in `allow` is refused).
-2. **Compile-time (ergonomics).** `use Bloccs.Node` walks the effect-shell AST
-   and warns when it sees `ctx.effects.X.*` for an `X` you didn't declare — a
-   fast "you forgot to declare that effect" signal.
+2. **Compile-time enforcement (`Bloccs.Node.EffectLint`).** `use Bloccs.Node`
+   walks the `pure_core` and `effect_shell` bodies and makes the facade the
+   *only* legal path to the world: a node that calls `File.write!`, `System.cmd`,
+   `Req.get`, `:httpc`, `spawn`/`send`, `DateTime.utc_now`, or any other
+   out-of-facade module is a **`CompileError`**. This is what lets you accept a
+   node from the declared capabilities alone, without reading the body line by
+   line to confirm it didn't reach around the facade. It is a capability
+   *discipline*, not a sound effect system — the trusted base is the linter plus
+   the adapters (a node calling its own app's `Repo` directly, or a `[lint]`
+   opt-out, are out of scope).
+3. **Compile-time hint.** Within the facade, using `ctx.effects.X.*` for an axis
+   `X` you didn't declare is a warning — a fast "you forgot to declare that
+   effect" signal (the runtime stub backstops it either way).
+
+To opt a node out of layer 2 for a vetted exception, use the `[lint]` section:
+`effects = "off"` downgrades the error to a loud warning (and flags the node for
+review); `allow = ["My.Vetted.Lib"]` permits specific extra modules.
 
 Adapters are swappable (mock by default, real `Req`/`Ecto` behind config) — see
 [Effect adapters](effect-adapters.md).

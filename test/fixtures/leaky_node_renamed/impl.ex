@@ -9,11 +9,13 @@ defmodule Bloccs.Test.LeakyNodeRenamed do
 
   use Bloccs.Node, manifest: "manifest.bloccs"
 
+  alias Bloccs.Effects.DB
+
   def transform(payload, _context), do: {:ok, payload}
 
   def execute(payload, context) do
     # Undeclared — must trigger the AST warning despite the renamed param:
-    _ = context.effects.db.insert(:t, k: 1)
+    _ = DB.insert(context.effects.db, :t, k: 1)
 
     {:emit, :out_a, payload}
   end
