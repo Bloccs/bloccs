@@ -13,6 +13,7 @@
   <a href="https://hex.pm/packages/bloccs"><img alt="Hex Version" src="https://img.shields.io/hexpm/v/bloccs.svg"></a>
   <a href="https://hexdocs.pm/bloccs"><img alt="Hex Docs" src="https://img.shields.io/badge/hex-docs-blue.svg"></a>
   <a href="https://github.com/Bloccs/bloccs/blob/main/LICENSE"><img alt="Apache 2 License" src="https://img.shields.io/hexpm/l/bloccs.svg"></a>
+  <a href="https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2FBloccs%2Fbloccs_notebooks%2Fmain%2Fnotebooks%2F01_first_network.livemd"><img alt="Run in Livebook" src="https://livebook.dev/badge/v1/blue.svg"></a>
 </p>
 
 You describe a graph of processing stages as TOML; bloccs type-checks the
@@ -117,6 +118,12 @@ repo only if you use them (see
 [`guides/effect-adapters.md`](guides/effect-adapters.md)).
 
 ## Quickstart
+
+> **Try it in your browser first** — the [bloccs_notebooks](https://github.com/Bloccs/bloccs_notebooks)
+> repo has runnable [Livebook](https://livebook.dev) notebooks (first network,
+> the events webhook processor, the flow primitives, subgraph composition). Click
+> [**Run in Livebook**](https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2FBloccs%2Fbloccs_notebooks%2Fmain%2Fnotebooks%2F01_first_network.livemd)
+> — no clone, no install.
 
 With the dep in place, the loop is **validate → compile → run** over a network
 manifest. Point the tasks at a `.bloccs` network — write one (see
