@@ -37,6 +37,11 @@ jobs:
 
       - run: mix deps.get
 
+      # :req is an OPTIONAL dep (mix.exs), so a clean build never compiles it —
+      # but the HTTP.Req adapter tests need it. Compile it explicitly before the
+      # check; `compile --no-optional-deps` (below) leaves these beams in place.
+      - run: mix deps.compile req
+
       # mix check = format --check-formatted
       #           + compile --no-optional-deps --warnings-as-errors
       #           + compile --warnings-as-errors
