@@ -393,12 +393,25 @@ defmodule Bloccs.RuntimeTest do
       # the message fails instead (see the no-producer test below).
       producer = Bloccs.Router.producer_name(rcfg.network_id, rcfg.local_id, rcfg.in_port)
       {:ok, pid} = Bloccs.Producer.start_link(name: producer)
-      on_exit(fn -> if Process.alive?(pid), do: GenStage.stop(pid) end)
+      # Consume the re-enqueued retry within this test. The producer name is
+      # shared across the retry/telemetry describes and push_after re-resolves
+      # it at fire time, so an un-drained retry can fire after teardown into a
+      # later test's producer of the same name and surface there as a stray
+      # {:consumed, ...} (see the refute_receive tests in "process/2 retry").
+      {:ok, cons} = Collector.start_link(pid, self())
+
+      on_exit(fn ->
+        if Process.alive?(cons), do: GenStage.stop(cons)
+        if Process.alive?(pid), do: GenStage.stop(pid)
+      end)
 
       Runtime.process(msg(%{"bad" => true}), rcfg)
 
       assert_receive {:telemetry, [:bloccs, :node, :retry], %{delay_ms: _, next_attempt: 1},
                       %{reason: :rejected_by_pure}}
+
+      # Drain the scheduled retry so it cannot leak past this test.
+      assert_receive {:consumed, %Message{metadata: %{bloccs_attempt: 1}}}, 500
     end
 
     test "fails the message when a retry cannot be scheduled (producer gone)", %{cfg: cfg} do

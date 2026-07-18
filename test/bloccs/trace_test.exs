@@ -77,9 +77,14 @@ defmodule Bloccs.TraceTest do
       ]
     }))
 
-    before_count = :erlang.system_info(:atom_count)
     assert {:ok, loaded} = Trace.load(path)
-    assert :erlang.system_info(:atom_count) == before_count
+
+    # The unknown names must never be interned as atoms. Assert on *these
+    # specific names* rather than the global atom_count, which races against
+    # every other async test that legitimately mints an atom.
+    for name <- ~w(totally_unknown_node_zq1 unknown_target_zq2) do
+      assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+    end
 
     # Known events survive; unknown names and malformed entries are dropped.
     assert {:port_in, :a, :in1} in loaded

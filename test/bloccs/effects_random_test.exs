@@ -31,9 +31,13 @@ defmodule Bloccs.EffectsRandomTest do
   end
 
   test "an unrecognized mode is denied on use without minting an atom" do
-    before_count = :erlang.system_info(:atom_count)
-    cap = RandomSystem.new("definitely-not-a-mode-#{:erlang.unique_integer([:positive])}")
-    assert :erlang.system_info(:atom_count) == before_count
+    mode = "definitely-not-a-mode-#{:erlang.unique_integer([:positive])}"
+    cap = RandomSystem.new(mode)
+
+    # The unknown mode must be kept as a binary, never interned as an atom.
+    # Assert on *this specific name* rather than the global atom_count, which
+    # races against every other async test that legitimately mints an atom.
+    assert_raise ArgumentError, fn -> String.to_existing_atom(mode) end
 
     assert_raise Bloccs.Effects.Denied, ~r/unsupported/, fn ->
       RandomSystem.int(cap, 10)
