@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  check:
+    name: mix check
+    runs-on: ubuntu-latest
+
+    env:
+      MIX_ENV: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir + Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.18.3"
+          otp-version: "27.2"
+
+      - name: Cache deps + build (includes dialyzer PLTs)
+        uses: actions/cache@v4
+        with:
+          # PLTs live under _build (no plt_local_path override in mix.exs),
+          # so a single _build cache covers them.
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - run: mix deps.get
+
+      # :req is an OPTIONAL dep (mix.exs), so `mix check` — whose first step is
+      # `compile --no-optional-deps` — never builds it in one pass, yet the
+      # HTTP.Req adapter tests need it. A plain `mix compile` (optionals
+      # included) in its own invocation builds req + its subtree (finch/mint);
+      # the later `--no-optional-deps` step leaves those beams in place.
+      - run: mix compile
+
+      # mix check = format --check-formatted
+      #           + compile --no-optional-deps --warnings-as-errors
+      #           + compile --warnings-as-errors
+      #           + test
+      #           + dialyzer
+      - run: mix check

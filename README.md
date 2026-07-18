@@ -10,6 +10,7 @@
 <p align="center"><strong>Typed, supervised dataflow on the BEAM.</strong></p>
 
 <p align="center">
+  <a href="https://github.com/Bloccs/bloccs/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Bloccs/bloccs/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://hex.pm/packages/bloccs"><img alt="Hex Version" src="https://img.shields.io/hexpm/v/bloccs.svg"></a>
   <a href="https://hexdocs.pm/bloccs"><img alt="Hex Docs" src="https://img.shields.io/badge/hex-docs-blue.svg"></a>
   <a href="https://github.com/Bloccs/bloccs/blob/main/LICENSE"><img alt="Apache 2 License" src="https://img.shields.io/hexpm/l/bloccs.svg"></a>
