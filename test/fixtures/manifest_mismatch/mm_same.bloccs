@@ -1,0 +1,12 @@
+[network]
+id      = "mm_same"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+fetch = { use = "fetch.bloccs" }
+sink  = { use = "sink.bloccs" }
+
+[[edges]]
+from = "fetch.out"
+to   = "sink.in"

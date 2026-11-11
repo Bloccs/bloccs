@@ -6,6 +6,52 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-11
+
+### Fixed
+
+- **A network could run a node under a different manifest than the one it
+  references.** A node module embeds its manifest at compile time, and the runtime
+  reads port schemas, effects, timeout, retry and idempotency from that embedded
+  copy. A network that referenced a *second* manifest whose contract pointed at
+  the same module passed `Bloccs.Validator.validate_network/2`, then ran with the
+  embedded manifest's behaviour and the referenced manifest's topology (delay,
+  rate, batch, join). The referenced manifest could declare no effects while the
+  node still made HTTP calls under the module's grant, so reading the network did
+  not tell you what the node could reach. It could not gain effects the module
+  never declared.
+
+  The two are now compared wherever a network or node manifest is checked, and
+  a difference is an error naming both manifest paths and the sections that
+  differ:
+
+  - `mix bloccs.validate` (network or node manifest) and `mix bloccs.compile`
+    compile the project first, then compare. Both exit non-zero on a difference;
+    `bloccs.compile` emits nothing.
+  - `Bloccs.Compiler.compile_and_load/2` returns `{:error, issues}` and loads
+    nothing. `mix bloccs.run` and `mix bloccs.coverage` print the issues and exit
+    non-zero.
+  - `Bloccs.Compiler.check_embedded_manifests/1` (network) and
+    `check_embedded_manifest/1` (node) expose the check.
+
+  A manifest whose module does not exist yet is not compared.
+
+### Added
+
+- **`--no-compile` for `mix bloccs.validate` and `mix bloccs.compile`.** Skips the
+  project compile and the comparison above, and prints a warning that it did. Use
+  it to validate a manifest before its module is written, or while the project
+  does not compile.
+
+### Changed
+
+- `mix bloccs.validate` and `mix bloccs.compile` now compile the project before
+  they run. A project that does not compile fails both unless `--no-compile` is
+  given.
+- `Bloccs.Compiler.compile_and_load/2` can now return `{:error, [Issue.t()]}`.
+  Callers that match `{:ok, sup} = ...` raise a `MatchError` on a mismatched
+  network instead of starting it.
+
 ## [0.12.0] — 2026-06-25
 
 ### Added

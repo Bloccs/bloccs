@@ -67,7 +67,7 @@ defmodule Mix.Tasks.Bloccs.Coverage do
       end
 
     Mix.Task.run("app.start")
-    {:ok, sup} = Compiler.compile_and_load(network)
+    sup = load!(network)
     {:ok, _} = sup.start_link([])
 
     network_id = String.to_atom(network.id)
@@ -96,6 +96,19 @@ defmodule Mix.Tasks.Bloccs.Coverage do
     case Map.fetch(network.expose.in, String.to_atom(name)) do
       {:ok, endpoint} -> endpoint
       :error -> Mix.raise("no exposed input port `#{name}` in network #{network.id}")
+    end
+  end
+
+  defp load!(network) do
+    case Compiler.compile_and_load(network) do
+      {:ok, sup} ->
+        sup
+
+      {:error, issues} ->
+        Mix.raise(
+          "cannot load network `#{network.id}`:\n" <>
+            Enum.map_join(issues, "\n", &"  - #{&1.scope}: #{&1.message}")
+        )
     end
   end
 end

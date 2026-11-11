@@ -1,0 +1,17 @@
+[node]
+id      = "mm_fetch"
+version = "0.1.0"
+kind    = "transform"
+
+[ports.in]
+in = { schema = "Mm@1" }
+
+[ports.out]
+out = { schema = "Mm@1" }
+
+[effects]
+
+
+[contract]
+pure_core    = "Bloccs.Integration.ManifestMismatchFixtures.Fetch.transform/2"
+effect_shell = "Bloccs.Integration.ManifestMismatchFixtures.Fetch.execute/2"

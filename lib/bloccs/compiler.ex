@@ -13,8 +13,9 @@ defmodule Bloccs.Compiler do
   `Mix.Task` does it as part of `bloccs.compile`) and starts the supervisor.
   """
 
-  alias Bloccs.Manifest.Network
+  alias Bloccs.Manifest.{Network, NetworkNode}
   alias Bloccs.Compiler
+  alias Bloccs.Validator.Issue
 
   @doc """
   Compile a network. Writes source files to `dest_dir` (defaults to
@@ -47,15 +48,94 @@ defmodule Bloccs.Compiler do
   @doc """
   Convenience: compile the network and immediately `Code.require_file/1`
   every emitted source so the modules become callable.
+
+  Returns `{:error, issues}` without loading anything when a node's manifest
+  differs from the one its module was compiled with (see
+  `check_embedded_manifests/1`).
   """
   @spec compile_and_load(Network.t(), keyword()) ::
-          {:ok, module()}
+          {:ok, module()} | {:error, [Issue.t()]}
   def compile_and_load(%Network{} = network, opts \\ []) do
-    {:ok, %{supervisor: sup, files: files}} = compile(network, opts)
+    with :ok <- check_embedded_manifests(network) do
+      {:ok, %{supervisor: sup, files: files}} = compile(network, opts)
 
-    Enum.each(files, &Code.require_file/1)
-    {:ok, sup}
+      Enum.each(files, &Code.require_file/1)
+      {:ok, sup}
+    end
   end
+
+  @doc """
+  Check that every node the network references is the manifest its module was
+  compiled with.
+
+  A node module embeds its manifest at compile time (`use Bloccs.Node, manifest:
+  ...`), and the runtime reads port schemas, effects, timeout, retry and
+  idempotency from that embedded copy. If the network references a *different*
+  manifest whose contract points at the same module, the validator checks one
+  manifest while the node runs another: for example a manifest that declares no
+  effects in front of a module that was granted HTTP. This rejects that.
+
+  Modules that are not loadable, or that do not `use Bloccs.Node`, are skipped:
+  this check only compares two manifests when both exist.
+  """
+  @spec check_embedded_manifests(Network.t()) :: :ok | {:error, [Issue.t()]}
+  def check_embedded_manifests(%Network{nodes: nodes, path: path}) do
+    issues =
+      nodes
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.flat_map(fn {local_id, %NetworkNode{manifest: manifest}} ->
+        embedded_issues(manifest, path, "[nodes].#{local_id}")
+      end)
+
+    if issues == [], do: :ok, else: {:error, issues}
+  end
+
+  @doc """
+  The same check for one node manifest: is it the manifest the module named in
+  its `[contract]` was compiled with?
+  """
+  @spec check_embedded_manifest(Bloccs.Manifest.Node.t()) :: :ok | {:error, [Issue.t()]}
+  def check_embedded_manifest(%Bloccs.Manifest.Node{} = manifest) do
+    case embedded_issues(manifest, manifest.path, "[contract]") do
+      [] -> :ok
+      issues -> {:error, issues}
+    end
+  end
+
+  defp embedded_issues(manifest, file, scope) do
+    module = manifest.contract.pure_core.module
+
+    with {:module, _} <- Code.ensure_loaded(module),
+         true <- function_exported?(module, :__bloccs_manifest__, 0),
+         embedded = module.__bloccs_manifest__(),
+         false <- same_manifest?(manifest, embedded) do
+      [
+        %Issue{
+          file: file,
+          scope: scope,
+          message:
+            "manifest #{rel(manifest.path)} differs from the embedded manifest of " <>
+              "#{inspect(module)} (compiled from #{rel(embedded.path)}); the node would run " <>
+              "with the embedded one. Differing sections: " <>
+              Enum.join(differing_keys(manifest, embedded), ", ")
+        }
+      ]
+    else
+      _ -> []
+    end
+  end
+
+  defp same_manifest?(a, b), do: differing_keys(a, b) == []
+
+  # `:path` is where the file was read from, not part of what the node declares.
+  defp differing_keys(a, b) do
+    for key <- Enum.sort(Map.keys(a) -- [:__struct__, :path]),
+        Map.get(a, key) != Map.get(b, key),
+        do: Atom.to_string(key)
+  end
+
+  defp rel(nil), do: "(no path)"
+  defp rel(path), do: Path.relative_to_cwd(path)
 
   defp default_dest_dir(%Network{id: id}) do
     base = Mix.Project.build_path()
