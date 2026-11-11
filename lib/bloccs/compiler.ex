@@ -84,39 +84,58 @@ defmodule Bloccs.Compiler do
       nodes
       |> Enum.sort_by(&elem(&1, 0))
       |> Enum.flat_map(fn {local_id, %NetworkNode{manifest: manifest}} ->
-        module = manifest.contract.pure_core.module
-
-        with {:module, _} <- Code.ensure_loaded(module),
-             true <- function_exported?(module, :__bloccs_manifest__, 0),
-             embedded = module.__bloccs_manifest__(),
-             false <- same_manifest?(manifest, embedded) do
-          [
-            %Issue{
-              file: path,
-              scope: "[nodes].#{local_id}",
-              message:
-                "manifest #{manifest.path} differs from the embedded manifest of " <>
-                  "#{inspect(module)} (compiled from #{embedded.path}); the node would run " <>
-                  "with the embedded one. Differing sections: " <>
-                  Enum.join(differing_keys(manifest, embedded), ", ")
-            }
-          ]
-        else
-          _ -> []
-        end
+        embedded_issues(manifest, path, "[nodes].#{local_id}")
       end)
 
     if issues == [], do: :ok, else: {:error, issues}
+  end
+
+  @doc """
+  The same check for one node manifest: is it the manifest the module named in
+  its `[contract]` was compiled with?
+  """
+  @spec check_embedded_manifest(Bloccs.Manifest.Node.t()) :: :ok | {:error, [Issue.t()]}
+  def check_embedded_manifest(%Bloccs.Manifest.Node{} = manifest) do
+    case embedded_issues(manifest, manifest.path, "[contract]") do
+      [] -> :ok
+      issues -> {:error, issues}
+    end
+  end
+
+  defp embedded_issues(manifest, file, scope) do
+    module = manifest.contract.pure_core.module
+
+    with {:module, _} <- Code.ensure_loaded(module),
+         true <- function_exported?(module, :__bloccs_manifest__, 0),
+         embedded = module.__bloccs_manifest__(),
+         false <- same_manifest?(manifest, embedded) do
+      [
+        %Issue{
+          file: file,
+          scope: scope,
+          message:
+            "manifest #{rel(manifest.path)} differs from the embedded manifest of " <>
+              "#{inspect(module)} (compiled from #{rel(embedded.path)}); the node would run " <>
+              "with the embedded one. Differing sections: " <>
+              Enum.join(differing_keys(manifest, embedded), ", ")
+        }
+      ]
+    else
+      _ -> []
+    end
   end
 
   defp same_manifest?(a, b), do: differing_keys(a, b) == []
 
   # `:path` is where the file was read from, not part of what the node declares.
   defp differing_keys(a, b) do
-    for key <- Map.keys(a) -- [:__struct__, :path],
+    for key <- Enum.sort(Map.keys(a) -- [:__struct__, :path]),
         Map.get(a, key) != Map.get(b, key),
         do: Atom.to_string(key)
   end
+
+  defp rel(nil), do: "(no path)"
+  defp rel(path), do: Path.relative_to_cwd(path)
 
   defp default_dest_dir(%Network{id: id}) do
     base = Mix.Project.build_path()

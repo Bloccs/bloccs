@@ -377,8 +377,11 @@ hitting real HTTP + SQLite (zero external services) lives in
 - `mix bloccs.new <name>` — scaffold a new project
 - `mix bloccs.gen.node <name> [--kind <kind>]` — add a node (manifest + impl) to an existing app
 - `mix bloccs.gen.network <name> [--node <node>]...` — add a network manifest to an existing app
-- `mix bloccs.validate <file>` — schema / contract / DAG checks on a node or network
-- `mix bloccs.compile <network>` — emit the Broadway supervision tree
+- `mix bloccs.validate <file> [--no-compile]` — schema / contract / DAG checks on
+  a node or network. Compiles the project first and fails if a manifest differs
+  from the one its node module was compiled with; `--no-compile` skips both
+- `mix bloccs.compile <network> [--no-compile]` — emit the Broadway supervision
+  tree, after the same check
 - `mix bloccs.run <network> --message <json> [--trace <out>]` — start the tree,
   feed a message, optionally record a `.bloccs-trace`
 - `mix bloccs.coverage <network> [--message <json> | --trace <file>]` — real
