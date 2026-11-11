@@ -1,0 +1,17 @@
+[network]
+id      = "gp_no_shapes"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+undeclared_source = { use = "undeclared_source.bloccs" }
+audit = { use = "audit.bloccs" }
+order_sink = { use = "order_sink.bloccs" }
+
+[[edges]]
+from = "undeclared_source.out"
+to   = "audit.in"
+
+[[edges]]
+from = "audit.out"
+to   = "order_sink.in"

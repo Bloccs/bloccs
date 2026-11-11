@@ -99,11 +99,12 @@ defmodule Bloccs.Manifest.Port do
   @type t :: %__MODULE__{
           name: atom(),
           schema: String.t(),
-          buffer: pos_integer() | nil
+          buffer: pos_integer() | nil,
+          requires: String.t() | nil
         }
 
   @enforce_keys [:name, :schema]
-  defstruct [:name, :schema, :buffer]
+  defstruct [:name, :schema, :buffer, :requires]
 end
 
 defmodule Bloccs.Manifest.Effects do

@@ -1,0 +1,20 @@
+[node]
+id      = "invoice_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "invoice_sink"
+owner  = "@bloccs"
+
+[ports.in]
+in = { schema = "GpInvoice@1" }
+
+[ports.out]
+done = { schema = "GpInvoice@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.GenericPortsFixtures.InvoiceSink.transform/2"
+effect_shell = "Bloccs.Integration.GenericPortsFixtures.InvoiceSink.execute/2"

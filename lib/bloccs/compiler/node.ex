@@ -112,6 +112,17 @@ defmodule Bloccs.Compiler.Node do
     })
   end
 
+  # A node with generic ports is bound per use, so its pipeline must carry the
+  # ports resolved for THIS network node, not the unbound ones in the module.
+  defp manifest_expr(%Node{ports_in: i, ports_out: o}) do
+    if Enum.any?(Map.values(i), & &1.requires) do
+      "%{@impl_module.__bloccs_manifest__() | ports_in: #{inspect(i, limit: :infinity)}, " <>
+        "ports_out: #{inspect(o, limit: :infinity)}}"
+    else
+      "@impl_module.__bloccs_manifest__()"
+    end
+  end
+
   defp render_pipeline(p) do
     manifest = p.nn.manifest
 
@@ -174,7 +185,7 @@ defmodule Bloccs.Compiler.Node do
     #{p.handle_batch_def}
       defp config do
         %Bloccs.Runtime.Config{
-          manifest: @impl_module.__bloccs_manifest__(),
+          manifest: #{manifest_expr(manifest)},
           network_id: @network_id,
           local_id: @local_id,
           in_port: @in_port

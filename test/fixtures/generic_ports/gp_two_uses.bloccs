@@ -1,0 +1,48 @@
+[network]
+id      = "gp_two_uses"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+order_source = { use = "order_source.bloccs" }
+invoice_source = { use = "invoice_source.bloccs" }
+audit_o = { use = "audit.bloccs" }
+audit_i = { use = "audit.bloccs" }
+order_sink = { use = "order_sink.bloccs" }
+invoice_sink = { use = "invoice_sink.bloccs" }
+
+[[edges]]
+from = "order_source.out"
+to   = "audit_o.in"
+
+[[edges]]
+from = "audit_o.out"
+to   = "order_sink.in"
+
+[[edges]]
+from = "invoice_source.out"
+to   = "audit_i.in"
+
+[[edges]]
+from = "audit_i.out"
+to   = "invoice_sink.in"
+
+[schemas."GpRaw@1"]
+
+[schemas."GpKeyed@1"]
+id = "string"
+
+[schemas."GpOrder@1"]
+id    = "string"
+total = "integer"
+
+[schemas."GpInvoice@1"]
+id    = "string"
+total = "integer"
+due   = "string"
+
+[schemas."GpAnon@1"]
+total = "integer"
+
+[schemas."GpNumId@1"]
+id = "integer"

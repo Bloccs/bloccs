@@ -129,9 +129,31 @@ defmodule Bloccs.Compiler do
 
   # `:path` is where the file was read from, not part of what the node declares.
   defp differing_keys(a, b) do
+    a = unbind_generic_ports(a, b)
+
     for key <- Enum.sort(Map.keys(a) -- [:__struct__, :path]),
         Map.get(a, key) != Map.get(b, key),
         do: Atom.to_string(key)
+  end
+
+  # A generic port (`$T`) is bound per use, so the network's copy carries the
+  # concrete schema while the embedded one carries the variable. Put the
+  # variable back before comparing; every other port field must still match.
+  defp unbind_generic_ports(manifest, embedded) do
+    unbind = fn ports, embedded_ports ->
+      Map.new(ports, fn {name, port} ->
+        case embedded_ports do
+          %{^name => %{schema: "$" <> _ = var}} -> {name, %{port | schema: var}}
+          _ -> {name, port}
+        end
+      end)
+    end
+
+    %{
+      manifest
+      | ports_in: unbind.(manifest.ports_in, embedded.ports_in),
+        ports_out: unbind.(manifest.ports_out, embedded.ports_out)
+    }
   end
 
   defp rel(nil), do: "(no path)"

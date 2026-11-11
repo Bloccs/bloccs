@@ -1,0 +1,20 @@
+[node]
+id      = "undeclared_source"
+version = "0.1.0"
+kind    = "source"
+
+[doc]
+intent = "undeclared_source"
+owner  = "@bloccs"
+
+[ports.in]
+raw = { schema = "GpRaw@1" }
+
+[ports.out]
+out = { schema = "GpUndeclared@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.GenericPortsFixtures.UndeclaredSource.transform/2"
+effect_shell = "Bloccs.Integration.GenericPortsFixtures.UndeclaredSource.execute/2"

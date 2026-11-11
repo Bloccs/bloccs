@@ -122,6 +122,7 @@ defmodule Bloccs.Manifest.Network do
     edges: [],
     expose: %Expose{},
     supervision: %Supervision{},
-    deploy: %{concurrency: %{}, placement: nil}
+    deploy: %{concurrency: %{}, placement: nil},
+    schemas: %{}
   ]
 end

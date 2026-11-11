@@ -448,10 +448,25 @@ defmodule Bloccs.Validator do
 
   defp check_single_input(%Node{}), do: []
 
-  defp check_one_port(%Port{schema: schema, name: name}, section, path, require?) do
+  defp check_one_port(%Port{schema: schema, name: name} = port, section, path, require?) do
     cond do
       not is_binary(schema) ->
         [%Issue{file: path, scope: "#{section}.#{name}", message: "schema must be a string"}]
+
+      # A type variable (`$T`). An in-port must bound it with `requires`; an
+      # out-port just repeats it. It is bound per use, when the node is wired.
+      Regex.match?(~r/^\$[A-Z][A-Za-z0-9_]*$/, schema) ->
+        if section == "[ports.in]" and not is_binary(port.requires) do
+          [
+            %Issue{
+              file: path,
+              scope: "#{section}.#{name}",
+              message: "generic port #{schema} needs `requires = \"Name@N\"`"
+            }
+          ]
+        else
+          []
+        end
 
       not Regex.match?(~r/^[A-Z][A-Za-z0-9_]*@\d+$/, schema) ->
         [
