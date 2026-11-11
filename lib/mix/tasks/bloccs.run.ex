@@ -38,7 +38,7 @@ defmodule Mix.Tasks.Bloccs.Run do
   defp run_network(path, opts) do
     {:ok, network} = Parser.parse_network(path)
     :ok = Validator.validate_network(network)
-    {:ok, sup_module} = Compiler.compile_and_load(network)
+    sup_module = load!(network)
     {:ok, _pid} = sup_module.start_link([])
 
     Mix.shell().info([:green, "✓ ", :reset, "network `#{network.id}` running"])
@@ -118,6 +118,19 @@ defmodule Mix.Tasks.Bloccs.Run do
     case Map.fetch(network.expose.in, expose_atom) do
       {:ok, endpoint} -> endpoint
       :error -> Mix.raise("no exposed input port `#{name}` in network #{network.id}")
+    end
+  end
+
+  defp load!(network) do
+    case Compiler.compile_and_load(network) do
+      {:ok, sup} ->
+        sup
+
+      {:error, issues} ->
+        Mix.raise(
+          "cannot load network `#{network.id}`:\n" <>
+            Enum.map_join(issues, "\n", &"  - #{&1.scope}: #{&1.message}")
+        )
     end
   end
 end

@@ -1,0 +1,12 @@
+[network]
+id      = "mm_differs"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+fetch = { use = "fetch_no_effects.bloccs" }
+sink  = { use = "sink.bloccs" }
+
+[[edges]]
+from = "fetch.out"
+to   = "sink.in"

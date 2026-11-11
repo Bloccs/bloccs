@@ -6,6 +6,35 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.12.1] — 2026-11-11
+
+### Fixed
+
+- **A network could run a node under a different manifest than the one it
+  references.** A node module embeds its manifest at compile time, and the runtime
+  reads port schemas, effects, timeout, retry and idempotency from that embedded
+  copy. A network that referenced a *second* manifest whose contract pointed at
+  the same module passed `Bloccs.Validator.validate_network/2`, then ran with the
+  embedded manifest's behaviour and the referenced manifest's topology (delay,
+  rate, batch, join). The referenced manifest could declare no effects while the
+  node still made HTTP calls under the module's grant, so reading the network did
+  not tell you what the node could reach. It could not gain effects the module
+  never declared.
+
+  `Bloccs.Compiler.compile_and_load/2` now compares the two and returns
+  `{:error, issues}` naming both manifest paths and the sections that differ; it
+  loads nothing. `Bloccs.Compiler.check_embedded_manifests/1` exposes the check.
+  `mix bloccs.run` and `mix bloccs.coverage` print the issues and exit non-zero.
+
+  `mix bloccs.validate` and `mix bloccs.compile` are unchanged: they run without
+  the node modules loaded, so they cannot see the embedded manifest.
+
+### Changed
+
+- `Bloccs.Compiler.compile_and_load/2` can now return `{:error, [Issue.t()]}`.
+  Callers that match `{:ok, sup} = ...` raise a `MatchError` on a mismatched
+  network instead of starting it.
+
 ## [0.12.0] — 2026-06-25
 
 ### Added
