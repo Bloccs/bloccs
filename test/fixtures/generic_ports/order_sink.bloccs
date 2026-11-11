@@ -1,0 +1,20 @@
+[node]
+id      = "order_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "order_sink"
+owner  = "@bloccs"
+
+[ports.in]
+in = { schema = "GpOrder@1" }
+
+[ports.out]
+done = { schema = "GpOrder@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.GenericPortsFixtures.OrderSink.transform/2"
+effect_shell = "Bloccs.Integration.GenericPortsFixtures.OrderSink.execute/2"

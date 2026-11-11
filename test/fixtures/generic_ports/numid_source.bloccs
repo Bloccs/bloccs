@@ -1,0 +1,20 @@
+[node]
+id      = "numid_source"
+version = "0.1.0"
+kind    = "source"
+
+[doc]
+intent = "numid_source"
+owner  = "@bloccs"
+
+[ports.in]
+raw = { schema = "GpRaw@1" }
+
+[ports.out]
+out = { schema = "GpNumId@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.GenericPortsFixtures.NumIdSource.transform/2"
+effect_shell = "Bloccs.Integration.GenericPortsFixtures.NumIdSource.execute/2"

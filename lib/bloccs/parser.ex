@@ -261,7 +261,8 @@ defmodule Bloccs.Parser do
          %Port{
            name: String.to_atom(name),
            schema: schema,
-           buffer: Map.get(opts, "buffer")
+           buffer: Map.get(opts, "buffer"),
+           requires: Map.get(opts, "requires")
          }}
 
       _ ->
@@ -519,18 +520,26 @@ defmodule Bloccs.Parser do
         rewrite_errors ++ expose_errors ++ expose_rewrite_errors ++ sup_errors ++ deploy_errors
 
     if errors == [] do
-      {:ok,
-       %Network{
-         path: path,
-         id: meta["id"],
-         version: meta["version"],
-         runtime: Map.get(meta, "runtime", "beam"),
-         nodes: nodes,
-         edges: rewritten_edges ++ sub_edges,
-         expose: expose,
-         supervision: sup,
-         deploy: deploy
-       }}
+      network = %Network{
+        path: path,
+        id: meta["id"],
+        version: meta["version"],
+        runtime: Map.get(meta, "runtime", "beam"),
+        nodes: nodes,
+        edges: rewritten_edges ++ sub_edges,
+        expose: expose,
+        supervision: sup,
+        deploy: deploy,
+        schemas: Bloccs.Generics.cast_schemas(Map.get(map, "schemas", %{}))
+      }
+
+      # Bind every generic (`$T`) port to the concrete schema wired into it, the
+      # same way subgraphs are flattened: at parse time, so the validator and
+      # compiler only ever see concrete ports.
+      case Bloccs.Generics.resolve(network) do
+        {:ok, resolved} -> {:ok, resolved}
+        {:error, msgs} -> {:error, Enum.map(msgs, &err(path, "[[edges]]", &1))}
+      end
     else
       {:error, errors}
     end

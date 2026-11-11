@@ -1,0 +1,37 @@
+[network]
+id      = "gp_missing_field"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+anon_source = { use = "anon_source.bloccs" }
+audit = { use = "audit.bloccs" }
+order_sink = { use = "order_sink.bloccs" }
+
+[[edges]]
+from = "anon_source.out"
+to   = "audit.in"
+
+[[edges]]
+from = "audit.out"
+to   = "order_sink.in"
+
+[schemas."GpRaw@1"]
+
+[schemas."GpKeyed@1"]
+id = "string"
+
+[schemas."GpOrder@1"]
+id    = "string"
+total = "integer"
+
+[schemas."GpInvoice@1"]
+id    = "string"
+total = "integer"
+due   = "string"
+
+[schemas."GpAnon@1"]
+total = "integer"
+
+[schemas."GpNumId@1"]
+id = "integer"

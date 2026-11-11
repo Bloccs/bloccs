@@ -1,0 +1,20 @@
+[node]
+id      = "stamp"
+version = "0.1.0"
+kind    = "transform"
+
+[doc]
+intent = "stamp"
+owner  = "@bloccs"
+
+[ports.in]
+in = { schema = "$T", requires = "GpKeyed@1" }
+
+[ports.out]
+out = { schema = "$T" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.GenericPortsFixtures.Stamp.transform/2"
+effect_shell = "Bloccs.Integration.GenericPortsFixtures.Stamp.execute/2"

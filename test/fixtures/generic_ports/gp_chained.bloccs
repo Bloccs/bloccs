@@ -1,0 +1,42 @@
+[network]
+id      = "gp_chained"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+order_source = { use = "order_source.bloccs" }
+audit = { use = "audit.bloccs" }
+stamp = { use = "stamp.bloccs" }
+order_sink = { use = "order_sink.bloccs" }
+
+[[edges]]
+from = "order_source.out"
+to   = "audit.in"
+
+[[edges]]
+from = "audit.out"
+to   = "stamp.in"
+
+[[edges]]
+from = "stamp.out"
+to   = "order_sink.in"
+
+[schemas."GpRaw@1"]
+
+[schemas."GpKeyed@1"]
+id = "string"
+
+[schemas."GpOrder@1"]
+id    = "string"
+total = "integer"
+
+[schemas."GpInvoice@1"]
+id    = "string"
+total = "integer"
+due   = "string"
+
+[schemas."GpAnon@1"]
+total = "integer"
+
+[schemas."GpNumId@1"]
+id = "integer"
