@@ -1,0 +1,20 @@
+[node]
+id      = "ms_sink"
+version = "0.1.0"
+kind    = "sink"
+
+[doc]
+intent = "ms_sink"
+owner  = "@bloccs"
+
+[ports.in]
+in = { schema = "MsOrder@1" }
+
+[ports.out]
+done = { schema = "MsOrder@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.ManifestSchemasFixtures.Sink.transform/2"
+effect_shell = "Bloccs.Integration.ManifestSchemasFixtures.Sink.execute/2"

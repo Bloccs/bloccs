@@ -1,0 +1,16 @@
+[network]
+id      = "ms_dangling"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+source = { use = "source.bloccs" }
+sink   = { use = "sink.bloccs" }
+
+[[edges]]
+from = "source.out"
+to   = "sink.in"
+
+[schemas."MsShipment@1"]
+order   = "MsOrder@1"
+carrier = "MsCarrier@1"

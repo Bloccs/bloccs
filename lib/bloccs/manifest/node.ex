@@ -26,7 +26,8 @@ defmodule Bloccs.Manifest.Node do
           delay_ms: pos_integer() | nil,
           reply: boolean(),
           lint: Lint.t() | nil,
-          observability: %{optional(atom()) => term()}
+          observability: %{optional(atom()) => term()},
+          schemas: Bloccs.Manifest.Schemas.t()
         }
 
   @enforce_keys [:id, :version, :kind, :ports_in, :ports_out, :effects, :contract]
@@ -46,7 +47,8 @@ defmodule Bloccs.Manifest.Node do
     :delay_ms,
     :lint,
     reply: false,
-    observability: %{}
+    observability: %{},
+    schemas: %{}
   ]
 
   @valid_kinds ~w(source transform router sink)a

@@ -110,10 +110,30 @@ defmodule Bloccs.Schema do
   """
   @spec validate(String.t(), map()) :: :ok | {:error, [String.t()]}
   def validate(id, payload) when is_binary(id) and is_map(payload) do
-    schema = fetch!(id)
-    errors = Enum.flat_map(schema.fields, &validate_field(&1, payload))
+    validate_fields(fetch!(id).fields, payload, &registry_fields/1)
+  end
+
+  @typedoc "Resolves a schema id named as a field type to its fields."
+  @type resolver :: (String.t() -> {:ok, [field()]} | :error)
+
+  @doc """
+  Validate a payload against a field list. `resolver` finds the fields of a
+  schema that a field names as its type; the default reads the registry. Pass
+  another resolver to check against schemas that are not registered, such as the
+  ones a manifest declares.
+  """
+  @spec validate_fields([field()], map(), resolver()) :: :ok | {:error, [String.t()]}
+  def validate_fields(fields, payload, resolver \\ &registry_fields/1)
+      when is_list(fields) and is_map(payload) and is_function(resolver, 1) do
+    errors = Enum.flat_map(fields, &validate_field(&1, payload, resolver))
 
     if errors == [], do: :ok, else: {:error, errors}
+  end
+
+  @doc "The fields of a registered schema. The default `t:resolver/0`."
+  @spec registry_fields(String.t()) :: {:ok, [field()]} | :error
+  def registry_fields(id) do
+    with {:ok, schema} <- lookup(id), do: {:ok, schema.fields}
   end
 
   @doc """
@@ -165,55 +185,53 @@ defmodule Bloccs.Schema do
     :persistent_term.put({@registry_key, id}, schema)
   end
 
-  defp validate_field({name, type}, payload) do
+  defp validate_field({name, type}, payload, resolver) do
     case Map.fetch(payload, name) do
       :error ->
         case Map.fetch(payload, to_string(name)) do
-          {:ok, value} -> check_type(name, type, value)
+          {:ok, value} -> check_type(name, type, value, resolver)
           :error -> ["missing field #{name}"]
         end
 
       {:ok, value} ->
-        check_type(name, type, value)
+        check_type(name, type, value, resolver)
     end
   end
 
-  defp check_type(_name, :string, v) when is_binary(v), do: []
-  defp check_type(_name, :integer, v) when is_integer(v), do: []
-  defp check_type(_name, :float, v) when is_float(v), do: []
-  defp check_type(_name, :boolean, v) when is_boolean(v), do: []
-  defp check_type(_name, :atom, v) when is_atom(v), do: []
-  defp check_type(_name, :map, v) when is_map(v), do: []
+  defp check_type(_name, :string, v, _) when is_binary(v), do: []
+  defp check_type(_name, :integer, v, _) when is_integer(v), do: []
+  defp check_type(_name, :float, v, _) when is_float(v), do: []
+  defp check_type(_name, :boolean, v, _) when is_boolean(v), do: []
+  defp check_type(_name, :atom, v, _) when is_atom(v), do: []
+  defp check_type(_name, :map, v, _) when is_map(v), do: []
 
-  defp check_type(name, {:list, inner}, v) when is_list(v) do
+  defp check_type(name, {:list, inner}, v, resolver) when is_list(v) do
     v
     |> Enum.with_index()
     |> Enum.flat_map(fn {item, idx} ->
       # The element name is only ever interpolated into error messages, so it
       # stays a binary — atoms are never GC'd, and payload-sized lists would
       # otherwise grow the atom table without bound.
-      case check_type("#{name}[#{idx}]", inner, item) do
-        [] -> []
-        errs -> errs
-      end
+      check_type("#{name}[#{idx}]", inner, item, resolver)
     end)
   end
 
-  defp check_type(name, ref, v) when is_binary(ref) do
-    case lookup(ref) do
-      {:ok, _} when is_map(v) -> validate_nested(ref, v)
-      {:ok, _} -> ["field #{name} must be a map matching #{ref}"]
-      :error -> ["field #{name} references unknown schema #{ref}"]
+  defp check_type(name, ref, v, resolver) when is_binary(ref) do
+    case resolver.(ref) do
+      {:ok, fields} when is_map(v) ->
+        case validate_fields(fields, v, resolver) do
+          :ok -> []
+          {:error, errs} -> Enum.map(errs, &"#{ref}.#{&1}")
+        end
+
+      {:ok, _} ->
+        ["field #{name} must be a map matching #{ref}"]
+
+      :error ->
+        ["field #{name} references unknown schema #{ref}"]
     end
   end
 
-  defp check_type(name, type, v),
+  defp check_type(name, type, v, _),
     do: ["field #{name}: expected #{inspect(type)}, got #{inspect(v)}"]
-
-  defp validate_nested(ref, payload) do
-    case validate(ref, payload) do
-      :ok -> []
-      {:error, errs} -> Enum.map(errs, &"#{ref}.#{&1}")
-    end
-  end
 end

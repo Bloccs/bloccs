@@ -1,0 +1,31 @@
+[node]
+id      = "ms_source"
+version = "0.1.0"
+kind    = "source"
+
+[doc]
+intent = "ms_source"
+owner  = "@bloccs"
+
+[ports.in]
+raw = { schema = "MsRaw@1" }
+
+[ports.out]
+out = { schema = "MsOrder@1" }
+
+[effects]
+
+[contract]
+pure_core    = "Bloccs.Integration.ManifestSchemasFixtures.Source.transform/2"
+effect_shell = "Bloccs.Integration.ManifestSchemasFixtures.Source.execute/2"
+
+[schemas."MsRaw@1"]
+
+[schemas."MsOrder@1"]
+id    = "string"
+total = "integer"
+tags  = ["string"]
+buyer = "MsCustomer@1"
+
+[schemas."MsCustomer@1"]
+name = "string"

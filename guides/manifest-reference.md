@@ -52,8 +52,52 @@ enriched = { schema = "EnrichedEvent@1" }
 failed   = { schema = "FailedEvent@1" }
 ```
 
-> The schema strings must be registered via `Bloccs.Schema.register/2` at app
-> start. Edges between ports are checked for matching schemas at validation time.
+> Edges between ports are checked for matching schema names at validation time.
+> Declare the shape of a schema in a `[schemas]` table (below), or register it
+> with `Bloccs.Schema.register/2` at app start.
+
+### `[schemas]` — optional
+
+Declares the fields of the schemas this manifest names. One sub-table per
+schema, keyed by `"Name@N"`:
+
+```toml
+[schemas."Order@1"]
+id    = "string"
+total = "integer"
+tags  = ["string"]
+buyer = "Customer@1"
+
+[schemas."Customer@1"]
+name = "string"
+
+[schemas."Raw@1"]
+```
+
+| field type | meaning |
+|---|---|
+| `"string"`, `"integer"`, `"float"`, `"boolean"`, `"atom"`, `"map"` | a value of that type |
+| `["type"]` | a list of that type (a one-element array) |
+| `"Name@N"` | a map that matches that schema |
+
+A schema with no fields accepts any map. Write it as a `[schemas."Name@N"]`
+header with nothing under it, not as `"Name@N" = {}`.
+
+How declared schemas are used:
+
+- **Scope.** A network uses the schemas declared in its own file, in the files
+  of the subgraphs it uses, and in its node manifests. They are not put in the
+  `Bloccs.Schema` registry, so two networks can declare the same name with
+  different fields.
+- **One shape per name.** In one network, every declaration of a name must have
+  the same fields. `mix bloccs.validate` reports a difference and names the
+  files. A schema named as a field type must be declared in one of those files.
+- **Runtime.** A payload that enters a port is checked against the declared
+  schema. A declared schema is used before a registered one of the same name.
+- **Extra fields.** Only declared fields are checked. A payload can carry more.
+- **Sharing.** A node manifest does not have to declare the schemas it names.
+  Declare a schema once, in the network file or in the node that produces it,
+  and the other nodes in the network use that declaration.
 
 ### `[effects]` — optional
 
@@ -224,6 +268,11 @@ table.
 | `id` | string | ✓ | network identifier |
 | `version` | string | ✓ | semver |
 | `runtime` | string | — | target runtime; defaults to `"beam"` |
+
+### `[schemas]` — optional
+
+The same table as in a node manifest (see `[schemas]` above). Use it for schemas
+that several nodes share.
 
 ### `[nodes]` — required
 
