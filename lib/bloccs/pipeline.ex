@@ -20,17 +20,18 @@ defmodule Bloccs.Pipeline do
   port in the node's manifest.
 
   - Returns `:ok` if validation is disabled (`config :bloccs, :validate_inbound, false`),
-    if the port has no schema, or if the schema isn't registered.
+    if the port has no schema, or if the schema is neither declared in a
+    manifest (`schemas`) nor registered.
   - Returns `{:error, reason}` if the payload doesn't match.
 
   v0.1 only validates inbound. Outbound payloads are validated implicitly
   when they reach the next node's inbound check.
   """
-  @spec validate_inbound(Node.t(), atom(), term()) ::
+  @spec validate_inbound(Node.t(), atom(), term(), Bloccs.Manifest.Schemas.t()) ::
           :ok | {:error, validation_error()}
-  def validate_inbound(%Node{} = manifest, port, payload) do
+  def validate_inbound(%Node{} = manifest, port, payload, schemas \\ %{}) do
     if enabled?() do
-      do_validate(manifest, port, payload)
+      do_validate(manifest, port, payload, schemas)
     else
       :ok
     end
@@ -42,10 +43,10 @@ defmodule Bloccs.Pipeline do
     Application.get_env(:bloccs, :validate_inbound, true)
   end
 
-  defp do_validate(%Node{ports_in: ports}, port, payload) do
+  defp do_validate(%Node{ports_in: ports}, port, payload, schemas) do
     with {:ok, %Port{schema: schema}} <- fetch_port(ports, port),
          :ok <- ensure_map(payload),
-         :ok <- check_against_schema(schema, payload) do
+         :ok <- check_against_schema(schema, payload, schemas) do
       :ok
     end
   end
@@ -60,21 +61,29 @@ defmodule Bloccs.Pipeline do
   defp ensure_map(payload) when is_map(payload), do: :ok
   defp ensure_map(other), do: {:error, {:payload_not_map, other}}
 
-  defp check_against_schema(schema, payload) do
-    case Schema.lookup(schema) do
+  # A schema declared in a manifest (`schemas`) is used before the registry, so
+  # a network checks against the shapes its own files declare.
+  defp check_against_schema(schema, payload, schemas) do
+    resolver = fn id ->
+      case Map.fetch(schemas, id) do
+        {:ok, fields} -> {:ok, fields}
+        :error -> Schema.registry_fields(id)
+      end
+    end
+
+    case resolver.(schema) do
       :error ->
-        # Schema referenced by the manifest but not yet registered. v0.1
-        # default is fail-soft: pipeline keeps moving. Users opting into
-        # strict validation can `config :bloccs, :require_schemas, true`
-        # — see require_schemas? below.
+        # Named by the manifest but neither declared nor registered. The
+        # default is fail-soft: the pipeline keeps moving. Opt into strict
+        # validation with `config :bloccs, :require_schemas, true`.
         if require_schemas?() do
           {:error, {:schema_mismatch, schema, ["schema not registered"]}}
         else
           :ok
         end
 
-      {:ok, _} ->
-        case Schema.validate(schema, payload) do
+      {:ok, fields} ->
+        case Schema.validate_fields(fields, payload, resolver) do
           :ok -> :ok
           {:error, reasons} -> {:error, {:schema_mismatch, schema, reasons}}
         end

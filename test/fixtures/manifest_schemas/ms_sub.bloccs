@@ -1,0 +1,19 @@
+[network]
+id      = "ms_sub"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+source = { use = "source.bloccs" }
+sink   = { use = "sink.bloccs" }
+
+[[edges]]
+from = "source.out"
+to   = "sink.in"
+
+[expose]
+in  = { raw = "source.raw" }
+out = { done = "sink.done" }
+
+[schemas."MsCustomer@1"]
+name = "integer"

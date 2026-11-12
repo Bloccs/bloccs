@@ -1,0 +1,12 @@
+[network]
+id      = "ms_parent"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+inner = { use = "ms_sub.bloccs" }
+sink  = { use = "sink.bloccs" }
+
+[[edges]]
+from = "inner.done"
+to   = "sink.in"

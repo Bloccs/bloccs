@@ -1,0 +1,12 @@
+[network]
+id      = "ms_ok"
+version = "0.1.0"
+runtime = "beam"
+
+[nodes]
+source = { use = "source.bloccs" }
+sink   = { use = "sink.bloccs" }
+
+[[edges]]
+from = "source.out"
+to   = "sink.in"

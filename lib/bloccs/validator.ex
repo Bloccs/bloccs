@@ -79,6 +79,9 @@ defmodule Bloccs.Validator do
   """
   @spec validate_network(Network.t(), keyword()) :: :ok | {:error, [Issue.t()]}
   def validate_network(%Network{} = network, opts \\ []) do
+    declared = Bloccs.Manifest.Schemas.merged(network)
+    opts = Keyword.put(opts, :declared_schemas, declared)
+
     node_issues =
       Enum.flat_map(network.nodes, fn {local_id, %NetworkNode{manifest: manifest}} ->
         case validate_node(manifest, opts) do
@@ -90,6 +93,7 @@ defmodule Bloccs.Validator do
     issues =
       List.flatten([
         node_issues,
+        check_schemas(network, declared),
         check_edges(network),
         check_acyclic(network),
         check_expose(network),
@@ -411,15 +415,18 @@ defmodule Bloccs.Validator do
 
   defp check_ports(%Node{ports_in: i, ports_out: o, path: path} = node, opts) do
     require_schemas? = Keyword.get(opts, :require_schemas, false)
+    # A schema a manifest declares counts as known. For a node checked alone
+    # that is its own `[schemas]`; inside a network it is the network's set.
+    declared = Keyword.get(opts, :declared_schemas, node.schemas)
 
     in_issues =
       Enum.flat_map(i, fn {_, %Port{} = p} ->
-        check_one_port(p, "[ports.in]", path, require_schemas?)
+        check_one_port(p, "[ports.in]", path, require_schemas?, declared)
       end)
 
     out_issues =
       Enum.flat_map(o, fn {_, %Port{} = p} ->
-        check_one_port(p, "[ports.out]", path, require_schemas?)
+        check_one_port(p, "[ports.out]", path, require_schemas?, declared)
       end)
 
     in_issues ++ out_issues ++ check_single_input(node)
@@ -448,7 +455,7 @@ defmodule Bloccs.Validator do
 
   defp check_single_input(%Node{}), do: []
 
-  defp check_one_port(%Port{schema: schema, name: name}, section, path, require?) do
+  defp check_one_port(%Port{schema: schema, name: name}, section, path, require?, declared) do
     cond do
       not is_binary(schema) ->
         [%Issue{file: path, scope: "#{section}.#{name}", message: "schema must be a string"}]
@@ -462,7 +469,7 @@ defmodule Bloccs.Validator do
           }
         ]
 
-      require? and Bloccs.Schema.lookup(schema) == :error ->
+      require? and not Map.has_key?(declared, schema) and Bloccs.Schema.lookup(schema) == :error ->
         [
           %Issue{
             file: path,
@@ -477,6 +484,32 @@ defmodule Bloccs.Validator do
   end
 
   # ---------- network checks ----------
+
+  # Manifest-declared schemas: every declaration of a name must have the same
+  # fields, and a schema named as a field type must be declared too.
+  defp check_schemas(%Network{path: path} = network, declared) do
+    conflicts =
+      for {id, files} <- Bloccs.Manifest.Schemas.conflicts(network) do
+        %Issue{
+          file: path,
+          scope: "[schemas].#{id}",
+          message:
+            "is declared with different fields in " <>
+              Enum.map_join(files, ", ", &Path.relative_to_cwd(&1 || "(no path)"))
+        }
+      end
+
+    dangling =
+      for {id, field, ref} <- Bloccs.Manifest.Schemas.dangling_refs(declared) do
+        %Issue{
+          file: path,
+          scope: "[schemas].#{id}",
+          message: "field #{field} names #{ref}, which no manifest declares"
+        }
+      end
+
+    conflicts ++ dangling
+  end
 
   defp check_edges(%Network{nodes: nodes, edges: edges, path: path}) do
     Enum.flat_map(edges, fn %Edge{from: from, to: tos} = edge ->

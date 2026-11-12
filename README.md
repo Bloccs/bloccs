@@ -170,7 +170,8 @@ mix bloccs.gen.network pipeline --node ingest --node enrich
 
 `gen.node` writes a manifest (`nodes/<name>.bloccs`) and its implementation
 (`lib/nodes/<name>.ex` — a pure core + effect shell, skeletoned by `--kind`);
-`gen.network` writes the topology. Register the port schemas the nodes reference,
+`gen.network` writes the topology. Declare the port schemas the nodes reference
+in a `[schemas]` table (or register them with `Bloccs.Schema.register/2`),
 fill in the `[[edges]]`, then `mix bloccs.validate networks/pipeline.bloccs`.
 
 ## Typed edges and scoped effects

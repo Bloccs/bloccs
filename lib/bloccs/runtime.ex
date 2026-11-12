@@ -45,11 +45,13 @@ defmodule Bloccs.Runtime do
             manifest: Node.t(),
             network_id: atom(),
             local_id: atom(),
-            in_port: atom()
+            in_port: atom(),
+            schemas: Bloccs.Manifest.Schemas.t()
           }
 
     @enforce_keys [:manifest, :network_id, :local_id, :in_port]
-    defstruct [:manifest, :network_id, :local_id, :in_port]
+    # `schemas`: the manifest-declared schemas this node's in-ports name.
+    defstruct [:manifest, :network_id, :local_id, :in_port, schemas: %{}]
   end
 
   @doc """
@@ -77,8 +79,8 @@ defmodule Bloccs.Runtime do
   `handle_message/3` of a batch node.
   """
   @spec batch_message(Message.t(), Config.t()) :: Message.t()
-  def batch_message(%Message{} = msg, %Config{manifest: manifest, in_port: in_port}) do
-    case Pipeline.validate_inbound(manifest, in_port, msg.data) do
+  def batch_message(%Message{} = msg, %Config{manifest: manifest, in_port: in_port} = cfg) do
+    case Pipeline.validate_inbound(manifest, in_port, msg.data, cfg.schemas) do
       :ok -> Message.put_batcher(msg, :default)
       {:error, reason} -> Message.failed(msg, reason)
     end
@@ -139,7 +141,7 @@ defmodule Bloccs.Runtime do
   """
   @spec join_arrival(Message.t(), Config.t(), atom()) :: Message.t()
   def join_arrival(%Message{} = msg, %Config{manifest: manifest} = cfg, port) do
-    case Pipeline.validate_inbound(manifest, port, msg.data) do
+    case Pipeline.validate_inbound(manifest, port, msg.data, cfg.schemas) do
       {:error, reason} ->
         Message.failed(msg, reason)
 
@@ -236,7 +238,7 @@ defmodule Bloccs.Runtime do
         msg
 
       :proceed ->
-        case Pipeline.validate_inbound(manifest, in_port, msg.data) do
+        case Pipeline.validate_inbound(manifest, in_port, msg.data, cfg.schemas) do
           :ok -> run(msg, cfg, dedup)
           {:error, reason} -> fail_or_retry(msg, reason, cfg, dedup, :validate)
         end

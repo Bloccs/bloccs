@@ -109,7 +109,9 @@ defmodule Bloccs.Manifest.Network do
           edges: [Edge.t()],
           expose: Expose.t(),
           supervision: Supervision.t(),
-          deploy: %{concurrency: %{atom() => pos_integer()}, placement: String.t() | nil}
+          deploy: %{concurrency: %{atom() => pos_integer()}, placement: String.t() | nil},
+          schemas: Bloccs.Manifest.Schemas.t(),
+          subgraph_schemas: [{Path.t(), Bloccs.Manifest.Schemas.t()}]
         }
 
   @enforce_keys [:id, :version, :nodes, :edges]
@@ -122,6 +124,9 @@ defmodule Bloccs.Manifest.Network do
     edges: [],
     expose: %Expose{},
     supervision: %Supervision{},
-    deploy: %{concurrency: %{}, placement: nil}
+    deploy: %{concurrency: %{}, placement: nil},
+    # `[schemas]` declared in this file, and in the files of any subgraph it uses.
+    schemas: %{},
+    subgraph_schemas: []
   ]
 end

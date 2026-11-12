@@ -124,7 +124,8 @@ defmodule Bloccs.Parser do
         {:rate, "[rate]", &cast_rate/1, true},
         {:delay_ms, "[delay]", &cast_delay/1, true},
         {:lint, "[lint]", &cast_lint/1, true},
-        {:observability, "[observability]", &cast_observability/1, true}
+        {:observability, "[observability]", &cast_observability/1, true},
+        {:schemas, "[schemas]", &cast_schemas/1, true}
       ])
 
     if errors == [] do
@@ -146,7 +147,8 @@ defmodule Bloccs.Parser do
         delay_ms: fields[:delay_ms],
         reply: meta.reply,
         lint: fields[:lint],
-        observability: fields[:observability] || %{}
+        observability: fields[:observability] || %{},
+        schemas: fields[:schemas] || %{}
       }
 
       {:ok, node}
@@ -191,6 +193,13 @@ defmodule Bloccs.Parser do
     end)
   end
 
+  defp cast_schemas(raw) do
+    case Bloccs.Manifest.Schemas.cast(raw) do
+      {:ok, schemas} -> {:ok, schemas}
+      {:error, msgs} -> {:error, Enum.map(msgs, &%Error{section: "[schemas]", message: &1})}
+    end
+  end
+
   defp fetch_raw(map, :node), do: Map.get(map, "node", :missing)
   defp fetch_raw(map, :doc), do: Map.get(map, "doc", :missing)
 
@@ -216,6 +225,7 @@ defmodule Bloccs.Parser do
   defp fetch_raw(map, :delay_ms), do: Map.get(map, "delay", :missing)
   defp fetch_raw(map, :lint), do: Map.get(map, "lint", :missing)
   defp fetch_raw(map, :observability), do: Map.get(map, "observability", :missing)
+  defp fetch_raw(map, :schemas), do: Map.get(map, "schemas", :missing)
 
   defp cast_node_meta(%{"id" => id, "version" => v, "kind" => k} = map) do
     case Node.cast_kind(k) do
@@ -510,13 +520,27 @@ defmodule Bloccs.Parser do
     {sup, sup_errors} = cast_supervision(sup_raw, path)
     {deploy, deploy_errors} = cast_deploy(deploy_raw, path)
 
+    {schemas, schema_errors} =
+      case cast_schemas(Map.get(map, "schemas", %{})) do
+        {:ok, schemas} -> {schemas, []}
+        {:error, errs} -> {%{}, prepend_section(errs, "[schemas]", path)}
+      end
+
+    # Each subgraph carries the `[schemas]` of its own file (and of the
+    # subgraphs under it), so a conflict can name the file it came from.
+    subgraph_schemas =
+      subgraph_index
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.flat_map(fn {_id, sg} -> sg.schemas end)
+
     meta_errors = check_network_meta(meta, path)
 
     errors =
       meta_errors ++
         node_errors ++
         edge_errors ++
-        rewrite_errors ++ expose_errors ++ expose_rewrite_errors ++ sup_errors ++ deploy_errors
+        rewrite_errors ++
+        expose_errors ++ expose_rewrite_errors ++ sup_errors ++ deploy_errors ++ schema_errors
 
     if errors == [] do
       {:ok,
@@ -529,7 +553,9 @@ defmodule Bloccs.Parser do
          edges: rewritten_edges ++ sub_edges,
          expose: expose,
          supervision: sup,
-         deploy: deploy
+         deploy: deploy,
+         schemas: schemas,
+         subgraph_schemas: subgraph_schemas
        }}
     else
       {:error, errors}
@@ -559,7 +585,8 @@ defmodule Bloccs.Parser do
           {Map.put(nodes, local_id, node), subidx, sub_edges, errs}
 
         {:ok, {:subgraph, sg}} ->
-          {Map.merge(nodes, sg.nodes), Map.put(subidx, local_id, %{in: sg.in, out: sg.out}),
+          {Map.merge(nodes, sg.nodes),
+           Map.put(subidx, local_id, %{in: sg.in, out: sg.out, schemas: sg.schemas}),
            sub_edges ++ sg.edges, errs}
 
         {:error, e} ->
@@ -662,7 +689,8 @@ defmodule Bloccs.Parser do
                 nodes: ns_nodes,
                 edges: ns_edges,
                 in: resolve_expose(sub.expose.in, local_id),
-                out: resolve_expose(sub.expose.out, local_id)
+                out: resolve_expose(sub.expose.out, local_id),
+                schemas: [{resolved, sub.schemas} | sub.subgraph_schemas]
               }}}
 
           errors ->

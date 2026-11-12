@@ -112,6 +112,14 @@ defmodule Bloccs.Compiler.Node do
     })
   end
 
+  # The manifest-declared schemas this node checks inbound payloads against.
+  defp schemas_expr(network, manifest) do
+    network
+    |> Bloccs.Manifest.Schemas.merged()
+    |> Bloccs.Manifest.Schemas.for_node(manifest)
+    |> inspect(limit: :infinity, printable_limit: :infinity)
+  end
+
   defp render_pipeline(p) do
     manifest = p.nn.manifest
 
@@ -177,7 +185,8 @@ defmodule Bloccs.Compiler.Node do
           manifest: @impl_module.__bloccs_manifest__(),
           network_id: @network_id,
           local_id: @local_id,
-          in_port: @in_port
+          in_port: @in_port,
+          schemas: #{schemas_expr(p.network, manifest)}
         }
       end
     end

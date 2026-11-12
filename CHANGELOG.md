@@ -6,6 +6,47 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-12
+
+### Added
+
+- **Schemas can be declared in manifests** (#48, decision 2). A node or network
+  manifest can declare the fields of the schemas it names in
+  `[schemas."Name@N"]` tables, so the shape is in the reviewed file and not only
+  in application boot code:
+
+  ```toml
+  [schemas."Order@1"]
+  id    = "string"
+  total = "integer"
+  tags  = ["string"]
+  buyer = "Customer@1"
+  ```
+
+  - A network uses the schemas declared in its own file, in the files of its
+    subgraphs and in its node manifests. They are scoped to that network and are
+    not put in the `Bloccs.Schema` registry.
+  - `mix bloccs.validate` and `mix bloccs.compile` reject a name that two files
+    declare with different fields, and a field type that names a schema no
+    manifest declares. No application boot is needed.
+  - At runtime a payload that enters a port is checked against the declared
+    schema. A declared schema is used before a registered one of the same name.
+  - A declared schema counts as known for the `:require_schemas` option.
+  - New: `Bloccs.Manifest.Schemas`, `Bloccs.Schema.validate_fields/3`,
+    `Bloccs.Schema.registry_fields/1`, and an optional fourth argument to
+    `Bloccs.Pipeline.validate_inbound/4`.
+
+  `Bloccs.Schema.register/2` still works. A schema that is neither declared nor
+  registered is still not checked by default; that default is a later change.
+
+### Changed
+
+- `%Bloccs.Manifest.Node{}` has a new `schemas` field and
+  `%Bloccs.Manifest.Network{}` has new `schemas` and `subgraph_schemas` fields.
+  If a build keeps node modules compiled against an older bloccs (a path
+  dependency can do this), the embedded-manifest check from 0.13.0 reports a
+  difference in `schemas`. Recompile with `mix compile --force`.
+
 ## [0.13.0] — 2026-11-11
 
 ### Fixed
